@@ -4,8 +4,12 @@ import { VGM_SUPPORTED } from './vgm.js';
 import { isAY, parseAY, runAY } from './ay.js';
 import { isVGM, unpackVGM, parseVGM } from './vgmin.js';
 
+// chiptune.app の API と曲ファイルは chiptune.app と localhost からしか読めない。
+// それ以外 (GitHub Pages の公開ページ) では Cloudflare Workers の中継 (proxy/worker.js) を通す。
+const PROXY = 'https://chip-swap-proxy.zitnei.workers.dev';
+const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const API = 'https://chiptune.app/api';
-const FILES = 'https://gifx.co/music/';
+const FILES = LOCAL ? 'https://gifx.co/music/' : PROXY + '/music/';
 const $ = (id) => document.getElementById(id);
 const NOTE = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const noteName = (n) => NOTE[n % 12] + (Math.floor(n / 12) - 1);

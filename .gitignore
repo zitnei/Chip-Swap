@@ -4,3 +4,4 @@ _test/
 node_modules/
 *.wav
 *.vgm
+.wrangler/
