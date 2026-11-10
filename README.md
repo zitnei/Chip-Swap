@@ -32,6 +32,7 @@ VGM は基板の音源チップへの命令を記録したデータです。命�
 - 読み取れる音源: YM2151 / YM2203 / YM2608 / YM2610 / YM2612 / YM3812 / YM3526 / Y8950 / YMF262 / YM2413 / AY8910 / SN76489 (リズム音源と OKI MSM6295 はドラムとして)
 - PCM だけで鳴らす基板 (QSound・X1-010・YMZ280B など) は非対応
 - 公開ページでは chiptune.app の「VGM Rips / Arcade」(526 作品・18,445 曲) の一覧を `catalog/` に同梱して使います。
+- 「ゲーム別」タブの「ゲーム機」ボタン (ファミコン・スーパーファミコン・メガドライブ・PC エンジン・X68000 など 15 機種) を押すと、その機種のゲーム一覧を chiptune.app から 1 回だけ読み込みます (公開ページは中継経由)。ゲームを開いたときに、そのゲームの曲の一覧を読みます。
 - chiptune.app の一覧 API と曲ファイルの配信元は chiptune.app と localhost からしか読めないため、公開ページでは Cloudflare Workers の中継 (`proxy/worker.js`、https://chip-swap-proxy.zitnei.workers.dev) を通して曲ファイルを読み込みます。中継は公開ページと localhost からの、chiptune.app の一覧・曲ファイルへのアクセスだけを通します。
 
 ### 音源エンジンを変更したとき

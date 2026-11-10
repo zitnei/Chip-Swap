@@ -71,6 +71,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
 #gameFilter { width: 100%; }
 .scopes { margin: 8px 0 0; }
 .scopes .tab { font-size: 12px; padding: 2px 10px; }
+.scope-head { flex-basis: 100%; font-size: 12px; color: var(--muted, #666); margin: 6px 0 0; }
 .letters { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0 2px; }
 .letters button { background: var(--surface); color: var(--text); border-color: var(--border); font-size: 12px; padding: 1px 0; width: 24px; font-weight: 600; }
 .letters button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); filter: none; }

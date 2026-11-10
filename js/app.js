@@ -8,7 +8,7 @@ import { isSPC, spcToReg, spcTags, loadSpcCore } from './spc.js';
 
 // chiptune.app の API と曲ファイルは chiptune.app と localhost からしか読めない。
 // それ以外 (GitHub Pages の公開ページ) では Cloudflare Workers の中継 (proxy/worker.js) を通す。
-const APP_VERSION = '20261110m'; // 更新したら index.html の ?v= と一緒に変える
+const APP_VERSION = '20261110n'; // 更新したら index.html の ?v= と一緒に変える
 const PROXY = 'https://chip-swap-proxy.zitnei.workers.dev';
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 // (API は下の PROXY が決まってから設定)
@@ -566,19 +566,68 @@ function trackFiles(dirs, path) {
 const SERIES = [{ id: 'gradius', label: 'グラディウス シリーズ', re: /gradius|nemesis|salamander|life force|parodius|gofer/i }];
 const PLATFORM = { 'Sharp X68000': 'X68000版', 'NEC PC-88': 'PC-88版', 'Sharp X1': 'X1版', MSX: 'MSX版', 'NEC TurboGrafx 16': 'PCエンジン版', 'Nintendo NES': 'ファミコン版', 'Nintendo GameBoy': 'ゲームボーイ版' };
 const MAKERS = ['Capcom', 'Konami', 'Namco', 'Sega', 'Taito'];
+// ゲーム機: chiptune.app の一覧から、ボタンを押したときに 1 回だけ読む (公開ページは中継経由)
+const CONSOLES = [
+  { name: 'ファミコン', path: '/VGM Rips/Nintendo NES', en: 'nes famicom' },
+  { name: 'スーパーファミコン', path: '/Nintendo SNES', en: 'snes super famicom spc', spc: true },
+  { name: 'ゲームボーイ', path: '/VGM Rips/Nintendo GameBoy', en: 'gameboy' },
+  { name: 'メガドライブ', path: '/Sega Genesis', en: 'genesis mega drive' },
+  { name: 'マスターシステム', path: '/Sega Master System', en: 'master system mark iii' },
+  { name: 'ゲームギア', path: '/Sega Game Gear', en: 'game gear' },
+  { name: 'PCエンジン', path: '/VGM Rips/NEC TurboGrafx 16', en: 'pc engine turbografx' },
+  { name: 'ネオジオ', path: '/VGM Rips/SNK Neo Geo', en: 'neo geo' },
+  { name: 'MSX', path: '/VGM Rips/MSX', en: 'msx' },
+  { name: 'PC-88', path: '/VGM Rips/NEC PC-88', en: 'pc-88 pc88' },
+  { name: 'PC-98', path: '/VGM Rips/NEC PC-98', en: 'pc-98 pc98' },
+  { name: 'X68000', path: '/VGM Rips/Sharp X68000', en: 'x68000 x68k' },
+  { name: 'X1', path: '/VGM Rips/Sharp X1', en: 'x1' },
+  { name: 'FM TOWNS', path: '/VGM Rips/Fujitsu FM Towns', en: 'fm towns' },
+  { name: 'PC (DOS)', path: '/VGM Rips/PC DOS', en: 'pc dos adlib' },
+];
+const consoleOf = (scope) => CONSOLES.find((c) => 'platform:' + c.name + '版' === scope);
+const consoleLoad = {};
+function makeGame(path, name, count, extra) {
+  const t = splitTitle(name);
+  const g = { path, name, count, title: t.title, sys: t.sys, maker: '', platform: '', top: 'VGM Rips', ...extra };
+  g.series = (SERIES.find((s) => s.re.test(name)) || {}).id || '';
+  g.label = [g.maker, g.platform, g.sys].filter(Boolean).join(' ・ ');
+  g.search = [name, g.maker, g.platform, g.en || '', g.series === 'gradius' ? 'グラディウス gradius' : ''].join(' ').toLowerCase();
+  return g;
+}
+const sortGames = (gs) => gs.sort((a, b) => a.title.localeCompare(b.title, 'en', { sensitivity: 'base' }) || a.label.localeCompare(b.label));
+// ゲーム機のゲーム一覧を読み込んで games に加える
+function loadConsole(c) {
+  return (consoleLoad[c.path] ??= (async () => {
+    await loadGames();
+    const items = await apiFetch(`${API}/browse?path=${encodeURIComponent(c.path)}`);
+    if (!items) throw new Error('chiptune.app の一覧を読めませんでした');
+    const have = new Set(games.map((g) => g.path));
+    for (const it of items) {
+      const p = '/' + it.path;
+      if (it.type !== 'directory' || have.has(p)) continue;
+      games.push(makeGame(p, it.path.split('/').pop(), it.count, { platform: c.name + '版', en: c.en, home: true, live: true, spc: !!c.spc }));
+    }
+    sortGames(games);
+    c.loaded = true;
+  })().catch((e) => { delete consoleLoad[c.path]; throw e; }));
+}
+// ゲーム機のゲームの曲: フォルダを開いて (中にフォルダがあればその中も) 曲を集める
+async function liveTracks(path, depth = 0) {
+  const items = (await apiFetch(`${API}/browse?path=${encodeURIComponent(path)}`)) || [];
+  const out = [];
+  for (const it of items) {
+    if (it.type === 'directory') { if (depth < 2) out.push(...(await liveTracks('/' + it.path, depth + 1))); }
+    else if (isMidi(it.path)) out.push({ file: it.path, songId: it.songId || null, label: it.path.split('/').pop().replace(/\.(vg[mz]|midi?|kar|rmi|spc|ay)$/i, '') });
+  }
+  return out;
+}
+const gameTracks = async (g) => (g.live ? (g.tracks ??= await liveTracks(g.path)) : trackFiles(await catTop(g.top || 'VGM Rips'), g.path));
 let gameScope = 'all';
 async function loadGames() {
   if (games) return games;
   const dirs = await catTop('VGM Rips');
   const isDir = (e) => typeof e[1] === 'number';
-  const make = (path, name, count, extra) => {
-    const t = splitTitle(name);
-    const g = { path, name, count, title: t.title, sys: t.sys, maker: '', platform: '', top: 'VGM Rips', ...extra };
-    g.series = (SERIES.find((s) => s.re.test(name)) || {}).id || '';
-    g.label = [g.maker, g.platform, g.sys].filter(Boolean).join(' ・ ');
-    g.search = [name, g.maker, g.platform, g.series === 'gradius' ? 'グラディウス gradius' : ''].join(' ').toLowerCase();
-    return g;
-  };
+  const make = makeGame;
   games = [];
   // アーケード: メーカー別フォルダ (Capcom / Konami など) は中のゲームを 1 作品ずつ
   for (const e of dirs[GAME_ROOT] || []) {
@@ -612,18 +661,24 @@ async function loadGames() {
       if (n) games.push(make(path, name, n, { platform: label, home: true, top, midi: true }));
     } catch {}
   }
-  games.sort((a, b) => a.title.localeCompare(b.title, 'en', { sensitivity: 'base' }) || a.label.localeCompare(b.label));
+  sortGames(games);
   return games;
 }
 function renderScopes(gs) {
   const box = $('gameScopes'); box.innerHTML = '';
   const scopes = [['all', 'すべて'], ...SERIES.map((s) => ['series:' + s.id, s.label]), ...MAKERS.map((m) => ['maker:' + m, m])];
   // 「1つ上へ」で入った機種・アーケードのまとまりも、選択中のボタンとして出す
-  if (!scopes.some(([id]) => id === gameScope)) scopes.push([gameScope, scopeLabel(gameScope)]);
-  for (const [id, label] of scopes) {
+  const cons = CONSOLES.map((c) => ['platform:' + c.name + '版', c.name]);
+  if (![...scopes, ...cons].some(([id]) => id === gameScope)) scopes.push([gameScope, scopeLabel(gameScope)]);
+  addScopeButtons(box, scopes, gameScope, (id) => { gameScope = id; showGames(); });
+  const h = document.createElement('div'); h.className = 'scope-head'; h.textContent = '🎮 ゲーム機 (押すと一覧を読み込みます)'; box.append(h);
+  addScopeButtons(box, cons, gameScope, (id) => { gameScope = id; showGames(); });
+}
+function addScopeButtons(box, list, cur, onPick) {
+  for (const [id, label] of list) {
     const b = document.createElement('button');
-    b.className = 'tab' + (gameScope === id ? ' active' : ''); b.textContent = label;
-    b.onclick = () => { gameScope = id; showGames(); };
+    b.className = 'tab' + (cur === id ? ' active' : ''); b.textContent = label;
+    b.onclick = () => onPick(id);
     box.append(b);
   }
 }
@@ -640,6 +695,13 @@ async function showGames(restore = false) {
   let gs;
   try { gs = await loadGames(); } catch (e) { return gameMsg('ゲーム一覧を読み込めませんでした (' + e.message + ')'); }
   renderScopes(gs);
+  const con = consoleOf(gameScope);
+  if (con && !con.loaded) {
+    gameMsg(`${con.name}のゲーム一覧を読み込み中…`); $('gameCount').textContent = '';
+    try { await loadConsole(con); } catch (e) { return gameMsg(`${con.name}の一覧を読み込めませんでした (${e.message})。少し待ってからもう一度押してください`); }
+    if (consoleOf(gameScope) !== con) return;
+    gs = games;
+  }
   const q = $('gameFilter').value.trim().toLowerCase();
   const [kind, val] = gameScope.split(':');
   const inScope = (g) => (kind === 'series' ? g.series === val : kind === 'maker' ? g.maker === val : kind === 'platform' ? g.platform === val : kind === 'arcade' ? !g.home && !g.maker : true);
@@ -647,7 +709,7 @@ async function showGames(restore = false) {
   const arcade = gs.filter((g) => !g.home).length;
   $('gameCount').textContent = q || gameScope !== 'all'
     ? `${shown.length} 作品・${shown.reduce((n, g) => n + g.count, 0).toLocaleString()} 曲`
-    : `アーケード ${arcade} 作品 + 家庭用版・MIDI ${gs.length - arcade} 作品・${gs.reduce((n, g) => n + g.count, 0).toLocaleString()} 曲`;
+    : `アーケード ${arcade} 作品 + 家庭用版・MIDI ${gs.length - arcade} 作品・${gs.reduce((n, g) => n + g.count, 0).toLocaleString()} 曲 (ゲーム機は下のボタンで追加)`;
   const ul = $('gameList'); ul.innerHTML = '';
   const letters = new Set();
   let last = '';
@@ -662,7 +724,7 @@ async function showGames(restore = false) {
     if (restore && g === lastGame) li.classList.add('last-game');
     ul.append(li);
   }
-  if (!shown.length) gameMsg('該当するゲームはありません');
+  if (!shown.length) gameMsg(gameScope === 'all' ? '該当するゲームはありません。ゲーム機のゲームは、下の「ゲーム機」のボタンで機種を選んでから探してください' : '該当するゲームはありません');
   ul.scrollTop = 0;
   const lastLi = restore && ul.querySelector('li.last-game');
   if (lastLi) ul.scrollTop += lastLi.getBoundingClientRect().top - ul.getBoundingClientRect().top - ul.clientHeight / 3;
@@ -682,9 +744,12 @@ async function showGame(g) {
   $('gameIndex').hidden = true; $('gameHead').hidden = false;
   $('gameTitle').textContent = g.title;
   $('gameSys').textContent = [g.label, g.count + '曲'].filter(Boolean).join(' ・ ');
-  const dirs = await catTop(g.top || 'VGM Rips');
-  const tracks = trackFiles(dirs, g.path);
+  gameMsg('曲を読み込み中…');
+  let tracks;
+  try { tracks = await gameTracks(g); } catch (e) { return gameMsg('曲の一覧を読み込めませんでした (' + e.message + ')'); }
+  if (lastGame !== g) return;
   const ul = $('gameList'); ul.innerHTML = '';
+  if (!tracks.length) gameMsg('このゲームには再生できる曲がありません');
   tracks.forEach((t, i) => {
     const li = document.createElement('li');
     li.textContent = '♪ ' + t.label; li.title = t.label; li.dataset.file = t.file;
@@ -919,17 +984,21 @@ document.querySelectorAll('#soundMode .mode').forEach((b) => b.onclick = () => {
   if (b.dataset.mode === 'game') showToneGames();
 });
 async function showToneGames() {
-  const gs = (await loadGames()).filter((g) => !g.midi);
   const box = $('tgScopes'); box.innerHTML = '';
-  for (const [id, label] of [['all', 'すべて'], ['arcade', 'アーケード'], ['home', '家庭用'], ...MAKERS.map((m) => ['maker:' + m, m])]) {
-    const b = document.createElement('button');
-    b.className = 'tab' + (tg.scope === id ? ' active' : ''); b.textContent = label;
-    b.onclick = () => { tg.scope = id; showToneGames(); };
-    box.append(b);
+  const pick = (id) => { tg.scope = id; showToneGames(); };
+  addScopeButtons(box, [['all', 'すべて'], ['arcade', 'アーケード'], ['home', '家庭用'], ...MAKERS.map((m) => ['maker:' + m, m])], tg.scope, pick);
+  const h = document.createElement('div'); h.className = 'scope-head'; h.textContent = '🎮 ゲーム機'; box.append(h);
+  addScopeButtons(box, CONSOLES.filter((c) => !c.spc).map((c) => ['platform:' + c.name + '版', c.name]), tg.scope, pick);
+  const con = consoleOf(tg.scope);
+  if (con && !con.loaded) {
+    $('tgList').innerHTML = ''; $('tgStatus').textContent = `${con.name}のゲーム一覧を読み込み中…`;
+    try { await loadConsole(con); } catch (e) { $('tgStatus').textContent = `${con.name}の一覧を読み込めませんでした (${e.message})`; return; }
+    if (consoleOf(tg.scope) !== con) return;
   }
+  const gs = (await loadGames()).filter((g) => !g.midi && !g.spc);
   const q = $('tgFilter').value.trim().toLowerCase();
   const [kind, val] = tg.scope.split(':');
-  const shown = gs.filter((g) => (kind === 'arcade' ? !g.home : kind === 'home' ? g.home : kind === 'maker' ? g.maker === val : true) && (!q || g.search.includes(q)));
+  const shown = gs.filter((g) => (kind === 'arcade' ? !g.home : kind === 'home' ? g.home : kind === 'maker' ? g.maker === val : kind === 'platform' ? g.platform === val : true) && (!q || g.search.includes(q)));
   const ul = $('tgList'); ul.innerHTML = '';
   for (const g of shown.slice(0, 300)) {
     const li = document.createElement('li');
@@ -945,8 +1014,10 @@ async function showToneGames() {
 $('tgFilter').oninput = () => showToneGames();
 async function applyToneGame(g) {
   const id = ++tg.seq;
-  const dirs = await catTop(g.top || 'VGM Rips');
-  const tracks = trackFiles(dirs, g.path).slice(0, 6);
+  $('tgStatus').textContent = `「${g.title}」の曲を探しています…`;
+  let tracks;
+  try { tracks = (await gameTracks(g)).filter((t) => /\.vg[mz]$/i.test(t.file)).slice(0, 6); } catch (e) { $('tgStatus').textContent = '曲の一覧を読み込めませんでした (' + e.message + ')'; return; }
+  if (id !== tg.seq) return;
   $('tgStatus').textContent = `「${g.title}」の曲を読み込んで音色を取り出し中… (${tracks.length} 曲)`;
   const bufs = [];
   for (const t of tracks) {
