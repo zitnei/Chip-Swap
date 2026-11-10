@@ -6,7 +6,7 @@
 <title>Chip Swap</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261110b">
+<link rel="stylesheet" href="style.css?v=20261110c">
 </head>
 <body>
 <header>
@@ -24,7 +24,8 @@
 
     <div class="tabpane" id="tab-games">
       <div id="gameIndex">
-        <input id="gameFilter" type="search" placeholder="ゲーム名で絞り込み (例: pac, gradius, darius)">
+        <input id="gameFilter" type="search" placeholder="ゲーム名・メーカー・機種で絞り込み (例: pac, gradius, x68000)">
+        <div id="gameScopes" class="filter scopes"></div>
         <div id="gameLetters" class="letters"></div>
         <div id="gameCount" class="crumbs"></div>
       </div>
@@ -35,7 +36,7 @@
         <button id="gamePlayAll">▶ 1曲目から連続再生</button>
       </div>
       <ul id="gameList" class="list"></ul>
-      <p class="hint">アーケード基板の VGM (chiptune.app「VGM Rips / Arcade」) をゲームごとに選べます。PCM だけで鳴らす基板の曲は再生できません。</p>
+      <p class="hint">アーケード基板の VGM (chiptune.app「VGM Rips / Arcade」) と、グラディウス シリーズの家庭用版をゲームごとに選べます。PCM だけで鳴らす基板 (CPS-2 の QSound など) の曲は再生できません。</p>
     </div>
 
     <div class="tabpane hidden" id="tab-browse">
@@ -119,6 +120,6 @@
 </main>
 
 <footer>曲データ: <a href="https://chiptune.app/" target="_blank" rel="noopener">chiptune.app (Chip Player JS)</a> ・ 音源はブラウザ内で合成した近似エミュレーションです</footer>
-<script type="module" src="js/app.js?v=20261110b"></script>
+<script type="module" src="js/app.js?v=20261110c"></script>
 </body>
 </html>

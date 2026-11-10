@@ -288,8 +288,117 @@ export function parseVGM(buf) {
     };
     handlers[0xb8] = okiCmd;
   }
+  // ---------- ファミコン (NES APU) ----------
+  if (clk(0x84, 0x161)) {
+    chips.push('NES APU');
+    const clock = clk(0x84, 0x161);
+    const base = voices.length;
+    add('ファミコン パルス1', 'psg'); add('ファミコン パルス2', 'psg'); add('ファミコン 三角波', 'psg'); add('ファミコン ノイズ', 'noise');
+    const R = new Uint8Array(0x20);
+    let en = 0x0f; // $4015 が記録されていない VGM もあるので全チャンネル有効から始める
+    const upd = () => {
+      for (let k = 0; k < 2; k++) {
+        const v = st[base + k], b = k * 4;
+        const t = R[b + 2] | ((R[b + 3] & 7) << 8);
+        const vol = R[b] & 0x10 ? R[b] & 15 : 12;
+        v.freq = clock / (16 * (t + 1)); v.vol = vol / 15; v.on = !!(en & (1 << k)) && vol > 0 && t >= 8;
+      }
+      const tv = st[base + 2], tt = R[0x0a] | ((R[0x0b] & 7) << 8);
+      tv.freq = clock / (32 * (tt + 1)); tv.vol = .8; tv.on = !!(en & 4) && (R[0x08] & 0x7f) > 0 && tt >= 2;
+      const nv = st[base + 3], nvol = R[0x0c] & 0x10 ? R[0x0c] & 15 : 12;
+      nv.noise = true; nv.vol = nvol / 15; nv.on = !!(en & 8) && nvol > 0;
+    };
+    handlers[0xb4] = (a, d) => {
+      if (a & 0x80) return; // 2 個目のチップは無視
+      if (a < 0x20) R[a] = d;
+      if (a === 0x15) en = d;
+      if (a === 0x03) st[base].onset = true;
+      if (a === 0x07) st[base + 1].onset = true;
+      if (a === 0x0b) st[base + 2].onset = true;
+      if (a === 0x0f) st[base + 3].onset = true;
+      upd();
+    };
+  }
+
+  // ---------- ゲームボーイ (DMG) ----------
+  if (clk(0x80, 0x161)) {
+    chips.push('GameBoy');
+    const base = voices.length;
+    add('GB パルス1', 'psg'); add('GB パルス2', 'psg'); add('GB 波形', 'psg'); add('GB ノイズ', 'noise');
+    const R = new Uint8Array(0x30);
+    const vol = [0, 0, 0, 0];
+    const upd = () => {
+      const p = (k, o) => { const v = st[base + k]; const x = R[o + 3] | ((R[o + 4] & 7) << 8); v.freq = 131072 / (2048 - x); v.vol = vol[k] / 15; v.on = vol[k] > 0; };
+      p(0, 0x00); p(1, 0x05);
+      const w = st[base + 2], x = R[0x0d] | ((R[0x0e] & 7) << 8), code = (R[0x0c] >> 5) & 3;
+      w.freq = 65536 / (2048 - x); w.vol = [0, 1, .5, .25][code]; w.on = !!(R[0x0a] & 0x80) && code > 0 && vol[2] > 0;
+      const n = st[base + 3]; n.noise = true; n.vol = vol[3] / 15; n.on = vol[3] > 0;
+    };
+    handlers[0xb3] = (a, d) => {
+      if (a & 0x80) return;
+      if (a < 0x30) R[a] = d;
+      // 発音 (トリガー) の時に音量を取り込む
+      if (a === 0x04 && d & 0x80) { vol[0] = R[0x02] >> 4; st[base].onset = true; }
+      if (a === 0x09 && d & 0x80) { vol[1] = R[0x07] >> 4; st[base + 1].onset = true; }
+      if (a === 0x0e && d & 0x80) { vol[2] = 15; st[base + 2].onset = true; }
+      if (a === 0x13 && d & 0x80) { vol[3] = R[0x11] >> 4; st[base + 3].onset = true; }
+      if (a === 0x02 && !(d & 0xf8)) vol[0] = 0;
+      if (a === 0x07 && !(d & 0xf8)) vol[1] = 0;
+      if (a === 0x11 && !(d & 0xf8)) vol[3] = 0;
+      if (a === 0x16 && !(d & 0x80)) vol.fill(0);
+      upd();
+    };
+  }
+
+  // ---------- PCエンジン (HuC6280) ----------
+  if (clk(0xa4, 0x161)) {
+    chips.push('HuC6280');
+    const clock = clk(0xa4, 0x161);
+    const base = voices.length;
+    for (let i = 0; i < 6; i++) add(`PCエンジン ${i + 1}`, 'psg');
+    const nz = add('PCエンジン ノイズ', 'noise');
+    const fr = new Array(6).fill(0), ctl = new Array(6).fill(0), noise = new Array(6).fill(0);
+    let sel = 0;
+    const upd = (c) => {
+      const v = st[base + c], on = (ctl[c] & 0x80) && !(ctl[c] & 0x40) && (ctl[c] & 31) > 0;
+      const vol = db((31 - (ctl[c] & 31)) * 1.5);
+      if (noise[c] & 0x80) { v.on = false; } else { v.freq = clock / (32 * Math.max(1, fr[c])); v.vol = vol; v.on = !!on; }
+      let nv = 0;
+      for (let k = 4; k < 6; k++) if (noise[k] & 0x80 && ctl[k] & 0x80) nv = Math.max(nv, db((31 - (ctl[k] & 31)) * 1.5));
+      const n = st[nz]; if (nv > n.vol * 1.9 && nv > .2) n.onset = true; n.noise = true; n.vol = nv; n.on = nv > 0;
+    };
+    handlers[0xb9] = (a, d) => {
+      if (a & 0x80) return;
+      if (a === 0) { sel = d & 7; return; }
+      if (sel > 5) return;
+      if (a === 2) fr[sel] = (fr[sel] & 0xf00) | d;
+      else if (a === 3) fr[sel] = (fr[sel] & 0xff) | ((d & 15) << 8);
+      else if (a === 4) { if (d & 0x80 && !(ctl[sel] & 0x80)) st[base + sel].onset = true; ctl[sel] = d; }
+      else if (a === 7) noise[sel] = d;
+      else return;
+      upd(sel);
+    };
+  }
+
+  // ---------- コナミ SCC (K051649 / SCC+) ----------
+  if (clk(0x9c, 0x161)) {
+    chips.push('K051649 (SCC)');
+    const clock = clk(0x9c, 0x161);
+    const base = voices.length;
+    for (let i = 0; i < 5; i++) add(`SCC ${i + 1}`, 'psg');
+    const fr = new Array(5).fill(0), vl = new Array(5).fill(0);
+    let keys = 0;
+    const upd = (c) => { const v = st[base + c]; v.freq = clock / (16 * (fr[c] + 1)); v.vol = vl[c] / 15; v.on = !!(keys & (1 << c)) && vl[c] > 0 && fr[c] > 8; };
+    handlers[0xd2] = (port, a, d) => {
+      port &= 0x7f;
+      if (port === 1) { const c = a >> 1; if (c > 4) return; fr[c] = a & 1 ? (fr[c] & 0xff) | ((d & 15) << 8) : (fr[c] & 0xf00) | d; upd(c); }
+      else if (port === 2) { if (a > 4) return; if ((d & 15) > vl[a] + 3) st[base + a].onset = true; vl[a] = d & 15; upd(a); }
+      else if (port === 3) { const rise = d & ~keys; keys = d; for (let c = 0; c < 5; c++) { if (rise & (1 << c)) st[base + c].onset = true; upd(c); } }
+    };
+  }
+
   // 読み取れない (PCM だけで音程を持つ) チップ
-  const PCM = { 0x38: 'SegaPCM', 0x88: 'MultiPCM', 0xa0: 'K054539', 0xa8: 'C140', 0xac: 'K053260', 0xb4: 'QSound', 0xd8: 'X1-010', 0xdc: 'C352', 0xe0: 'GA20', 0x68: 'YMZ280B', 0x60: 'YMF278B', 0x64: 'YMF271', 0x9c: 'K051649', 0xa4: 'HuC6280', 0x84: 'NES APU' };
+  const PCM = { 0x38: 'SegaPCM', 0x88: 'MultiPCM', 0xa0: 'K054539', 0xa8: 'C140', 0xac: 'K053260', 0xb4: 'QSound', 0xd8: 'X1-010', 0xdc: 'C352', 0xe0: 'GA20', 0x68: 'YMZ280B', 0x60: 'YMF278B', 0x64: 'YMF271' };
   for (const [o, n] of Object.entries(PCM)) { const off = +o; if (clk(off, off >= 0xc0 ? 0x171 : off >= 0x80 ? 0x161 : 0x151)) unsupported.push(n); }
 
   // ---------- コマンドを読み進めて 60Hz ごとに記録 ----------
@@ -330,7 +439,7 @@ export function parseVGM(buf) {
     if (c >= 0x40 && c <= 0x4e) { p += 3; continue; }
     if (c >= 0x51 && c <= 0x5f) { if (h) h(u[p + 1], u[p + 2]); p += 3; continue; }
     if (c >= 0xa0 && c <= 0xbf) { if (h) h(u[p + 1], u[p + 2]); p += 3; continue; }
-    if (c >= 0xc0 && c <= 0xdf) { p += 4; continue; }
+    if (c >= 0xc0 && c <= 0xdf) { if (h) h(u[p + 1], u[p + 2], u[p + 3]); p += 4; continue; }
     if (c >= 0xe0) { p += 5; continue; }
     p++; // 不明なコマンド
   }
