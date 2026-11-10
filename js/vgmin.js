@@ -17,6 +17,7 @@ export function isVGM(buf) {
 export async function unpackVGM(buf) {
   const u = new Uint8Array(buf);
   if (u[0] !== 0x1f || u[1] !== 0x8b) return buf;
+  if (typeof DecompressionStream === 'undefined') throw new Error('このブラウザは圧縮された VGM (.vgz) を開けません。iOS / Safari 16.4 以降が必要です');
   const ds = new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'));
   return await new Response(ds).arrayBuffer();
 }

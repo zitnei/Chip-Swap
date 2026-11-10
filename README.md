@@ -34,6 +34,14 @@ VGM は基板の音源チップへの命令を記録したデータです。命�
 - 公開ページでは chiptune.app の「VGM Rips / Arcade」(526 作品・18,445 曲) の一覧を `catalog/` に同梱して使います。
 - chiptune.app の一覧 API と曲ファイルの配信元は chiptune.app と localhost からしか読めないため、公開ページでは Cloudflare Workers の中継 (`proxy/worker.js`、https://chip-swap-proxy.zitnei.workers.dev) を通して曲ファイルを読み込みます。中継は公開ページと localhost からの、chiptune.app の一覧・曲ファイルへのアクセスだけを通します。
 
+### 音源エンジンを変更したとき
+
+AudioWorklet は Safari (iPhone) で import が使えないことがあるため、`js/worklet.bundle.js` (1 ファイルにまとめたもの) を読み込みます。`js/` の音源まわり (chips / engine / zx / regplay / vgmin / worklet) を変えたら作り直してください。あわせて `js/app.js` の `APP_VERSION` と `index.html` の `?v=` を更新すると、古いキャッシュと混ざりません。
+
+```bash
+node tools/build-worklet.mjs
+```
+
 ### 中継の更新
 
 ```bash

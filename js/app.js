@@ -6,7 +6,7 @@ import { isVGM, unpackVGM, parseVGM } from './vgmin.js';
 
 // chiptune.app の API と曲ファイルは chiptune.app と localhost からしか読めない。
 // それ以外 (GitHub Pages の公開ページ) では Cloudflare Workers の中継 (proxy/worker.js) を通す。
-const APP_VERSION = '20261110c'; // 更新したら index.html の ?v= と一緒に変える
+const APP_VERSION = '20261110d'; // 更新したら index.html の ?v= と一緒に変える
 const PROXY = 'https://chip-swap-proxy.zitnei.workers.dev';
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const API = 'https://chiptune.app/api';
@@ -27,12 +27,37 @@ const state = {
 let ctx, node, gain, analyser, audioInit = null;
 // 何度呼んでも安全 (準備は 1 回だけ。タップ直後に呼べば、スマホでも音声を開始できる)
 function ensureAudio() {
-  if (ctx && ctx.state === 'suspended') ctx.resume();
-  return (audioInit ??= initAudio());
+  unlockMobileAudio();
+  if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
+  return (audioInit ??= initAudio().catch((e) => {
+    audioInit = null;
+    $('songSub').textContent = '音声を開始できませんでした (' + (e && e.message || e) + ')。ブラウザを最新にするか、別のブラウザでお試しください';
+    throw e;
+  }));
 }
+// iPhone はマナーモード (消音スイッチ) だと Web Audio の音が出ない。
+// 再生用の音声として扱ってもらうため、無音の <audio> を流し、対応していれば audioSession を playback にする。
+let unlockEl = null;
+function unlockMobileAudio() {
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+  if (!unlockEl) {
+    const n = 4000, buf = new ArrayBuffer(44 + n), d = new DataView(buf);
+    const w = (o, s) => { for (let i = 0; i < 4; i++) d.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, 'RIFF'); d.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); d.setUint32(16, 16, true);
+    d.setUint16(20, 1, true); d.setUint16(22, 1, true); d.setUint32(24, 8000, true); d.setUint32(28, 8000, true);
+    d.setUint16(32, 1, true); d.setUint16(34, 8, true); w(36, 'data'); d.setUint32(40, n, true);
+    new Uint8Array(buf, 44).fill(128);
+    unlockEl = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })));
+    unlockEl.loop = true; unlockEl.setAttribute('playsinline', '');
+  }
+  unlockEl.play().catch(() => {});
+}
+// アプリを切り替えて戻った時などに、止まった音声を再開
+document.addEventListener('visibilitychange', () => { if (!document.hidden && ctx && state.playing && ctx.state !== 'running') ctx.resume().catch(() => {}); });
 async function initAudio() {
   ctx = new AudioContext({ latencyHint: 'playback' });
-  await ctx.audioWorklet.addModule('js/worklet.js?v=' + APP_VERSION);
+  // 音源エンジンは 1 ファイルにまとめたもの (tools/build-worklet.mjs) を読む。Safari では AudioWorklet 内の import が使えないことがあるため
+  await ctx.audioWorklet.addModule('js/worklet.bundle.js?v=' + APP_VERSION);
   node = new AudioWorkletNode(ctx, 'chip-player', { outputChannelCount: [2] });
   gain = ctx.createGain(); gain.gain.value = $('volume').value / 100;
   analyser = ctx.createAnalyser(); analyser.fftSize = 2048;
@@ -88,7 +113,7 @@ async function loadSong(buf, name, sub, path = '', songId = null) {
   for (const id of ['playBtn', 'stopBtn', 'seek', 'exportBtn']) $(id).disabled = false;
   updateVgmBtn();
   renderParts();
-  await ensureAudio();
+  try { await ensureAudio(); } catch { return false; }
   post({ type: 'mutes', value: state.mutes });
   post({ type: 'tones', value: state.tones });
   post(loadMsg());
@@ -121,7 +146,7 @@ async function loadVGM(buf, name, sub) {
   for (const id of ['playBtn', 'stopBtn', 'seek', 'exportBtn']) $(id).disabled = false;
   updateVgmBtn();
   renderParts();
-  await ensureAudio();
+  try { await ensureAudio(); } catch { return false; }
   post({ type: 'mutes', value: state.mutes });
   post({ type: 'tones', value: state.tones });
   post(loadMsg());
@@ -156,7 +181,7 @@ async function playZXSong(i) {
   for (const id of ['playBtn', 'stopBtn', 'seek', 'exportBtn']) $(id).disabled = false;
   updateVgmBtn();
   renderParts();
-  await ensureAudio();
+  try { await ensureAudio(); } catch { return false; }
   post({ type: 'mutes', value: state.mutes });
   post({ type: 'tones', value: state.tones });
   post(loadMsg());
@@ -307,7 +332,7 @@ $('fileInput').onchange = (e) => readLocal(e.target.files[0]);
 drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); readLocal(e.dataTransfer.files[0]); };
-async function readLocal(f) { if (f) { ensureAudio(); state.curFile = null; state.queue = []; state.qi = -1; updateQueueBtns(); await loadSong(await f.arrayBuffer(), f.name, 'ローカルファイル'); } }
+async function readLocal(f) { if (f) { ensureAudio().catch(() => {}); state.curFile = null; state.queue = []; state.qi = -1; updateQueueBtns(); await loadSong(await f.arrayBuffer(), f.name, 'ローカルファイル'); } }
 $('urlForm').onsubmit = async (e) => {
   e.preventDefault();
   const url = $('urlInput').value.trim(); if (!url) return;
@@ -328,7 +353,7 @@ document.querySelectorAll('.tabs .tab').forEach((t) => t.onclick = () => selectT
 state.queue = []; state.qi = -1;
 async function playQueue(queue, i, auto = false) {
   if (!queue[i]) return;
-  ensureAudio(); // タップした瞬間に音声を開始 (スマホでは後からだと鳴らないことがある)
+  ensureAudio().catch(() => {}); // タップした瞬間に音声を開始 (スマホでは後からだと鳴らないことがある)
   state.queue = queue; state.qi = i;
   updateQueueBtns();
   const ok = await loadRemote(queue[i].file, queue[i].songId);
@@ -467,7 +492,7 @@ $('gameFilter').oninput = () => showGames();
 
 // ---------- 再生コントロール ----------
 $('playBtn').onclick = async () => {
-  await ensureAudio();
+  try { await ensureAudio(); } catch { return; }
   if (state.playing) { post({ type: 'pause' }); setPlaying(false); }
   else { post({ type: 'play' }); setPlaying(true); }
 };
