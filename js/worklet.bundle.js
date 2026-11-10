@@ -852,6 +852,11 @@ class Engine {
     this.midi = Array.from({ length: 16 }, newMidiCh);
   }
 
+  // 鳴っている音をすべて即座に止める (MIDI のプログラムやコントロールの状態は残す)
+  silence() {
+    for (const c of this.chans) { c.busy = false; c.amp = 0; c.released = false; if (c.ops) for (const o of c.ops) { o.lvl = 0; o.st = 3; } }
+  }
+
   allOff() { for (const c of this.chans) this.release(c); for (const m of this.midi) m.held.clear(); }
 
   toneKey(ch) { return this.tones[ch] || FAMILY_TONE[this.midi[ch].program >> 3]; }
@@ -1717,6 +1722,8 @@ const { Player } = __m_engine_js;
 const { ZXPlayer } = __m_zx_js;
 const { RegPlayer } = __m_regplay_js;
 // 再生する曲の種類 (MIDI / ZX) に応じてプレイヤーを差し替える
+const FADE = Math.round(sampleRate * 0.012);
+
 class ChipProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -1731,10 +1738,11 @@ class ChipProcessor extends AudioWorkletProcessor {
           this.loadId = m.id || 0;
           p = this.player = this.make(m.zx ? 'zx' : m.reg ? 'reg' : 'midi');
           if (m.zx) p.load(m.zx.frames, m.zx.count, m.zx.clock); else if (m.reg) p.load(m.reg); else p.load(m.events, m.duration);
-          p.playing = false;
+          p.playing = false; this.muted = false; this.fade = 0;
           break;
-        case 'play': if (p.ended) p.seek(0); p.playing = true; break;
-        case 'pause': p.playing = false; p.engine.allOff(); break;
+        case 'play': if (p.ended) p.seek(0); p.playing = true; this.muted = false; this.fade = 0; this.fadeIn = FADE; break;
+        // 一時停止: 余韻を残さず、約 12ms で消して無音にする (急に切るとプツッと鳴るので短くフェード)
+        case 'pause': p.playing = false; if (!this.muted) this.fade = FADE; break;
         case 'seek': p.seek(m.time); break;
         case 'loop': cfg.loop = p.loop = m.value; break;
         case 'chip': cfg.chip = m.id; cfg.scale = m.scale; p.setChip(m.id, m.scale); break;
@@ -1753,7 +1761,24 @@ class ChipProcessor extends AudioWorkletProcessor {
     const out = outputs[0];
     const L = out[0], R = out[1] || out[0];
     L.fill(0); if (R !== L) R.fill(0);
-    this.player.process(L, R, L.length);
+    if (!this.muted) {
+      this.player.process(L, R, L.length);
+      // 一時停止のフェードアウト → 終わったら全チャンネルを止めて無音に
+      if (this.fade > 0) {
+        for (let i = 0; i < L.length; i++) {
+          const g = Math.max(0, this.fade - i) / FADE;
+          L[i] *= g; if (R !== L) R[i] *= g;
+        }
+        this.fade -= L.length;
+        if (this.fade <= 0) { this.fade = 0; this.muted = true; this.player.engine.silence(); }
+      } else if (this.fadeIn > 0) {
+        for (let i = 0; i < L.length; i++) {
+          const g = 1 - Math.max(0, this.fadeIn - i) / FADE;
+          L[i] *= g; if (R !== L) R[i] *= g;
+        }
+        this.fadeIn = Math.max(0, this.fadeIn - L.length);
+      }
+    }
     if ((this.tick += L.length) >= 2048) {
       this.tick = 0;
       const p = this.player;

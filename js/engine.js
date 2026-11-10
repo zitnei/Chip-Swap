@@ -171,6 +171,11 @@ export class Engine {
     this.midi = Array.from({ length: 16 }, newMidiCh);
   }
 
+  // 鳴っている音をすべて即座に止める (MIDI のプログラムやコントロールの状態は残す)
+  silence() {
+    for (const c of this.chans) { c.busy = false; c.amp = 0; c.released = false; if (c.ops) for (const o of c.ops) { o.lvl = 0; o.st = 3; } }
+  }
+
   allOff() { for (const c of this.chans) this.release(c); for (const m of this.midi) m.held.clear(); }
 
   toneKey(ch) { return this.tones[ch] || FAMILY_TONE[this.midi[ch].program >> 3]; }
