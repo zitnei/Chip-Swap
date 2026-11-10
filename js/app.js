@@ -6,7 +6,7 @@ import { isVGM, unpackVGM, parseVGM } from './vgmin.js';
 
 // chiptune.app の API と曲ファイルは chiptune.app と localhost からしか読めない。
 // それ以外 (GitHub Pages の公開ページ) では Cloudflare Workers の中継 (proxy/worker.js) を通す。
-const APP_VERSION = '20261110g'; // 更新したら index.html の ?v= と一緒に変える
+const APP_VERSION = '20261110h'; // 更新したら index.html の ?v= と一緒に変える
 const PROXY = 'https://chip-swap-proxy.zitnei.workers.dev';
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const API = 'https://chiptune.app/api';
@@ -120,9 +120,12 @@ async function loadSong(buf, name, sub, path = '', songId = null) {
   post({ type: 'play' }); setPlaying(true);
 }
 
-// ---------- 元の音源で聴く (chiptune.app の再生画面をページ内に表示) / YouTube で探す ----------
+// ---------- 元の音源で聴く / YouTube で探す ----------
+// VGM: libvgm (chiptune.app と同じエミュレーター) をページ内で動かして、元の基板の音源で再生する。
+// MIDI など VGM 以外: chiptune.app の再生画面をページ内に表示する。
 function setOrigLink(songId) {
   state.songId = songId || null;
+  state.origVgm = null;
   closeOrig();
   $('origBtn').disabled = !songId;
   $('origBtn').title = songId ? '元の基板・機種の音源で再生します (chiptune.app の再生画面)' : 'この曲は chiptune.app の曲ではないため、元の音源では聴けません';
@@ -134,19 +137,72 @@ function setOrigLink(songId) {
   $('ytBtn').hidden = !q;
   if (q) $('ytBtn').href = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q);
 }
+let origNode = null, origReady = null, origSeq = 0, origDuration = 0, origSeeking = false;
+function ensureOrig() {
+  return (origReady ??= (async () => {
+    await ensureAudio();
+    await ctx.audioWorklet.addModule('js/original-worklet.bundle.js?v=' + APP_VERSION);
+    origNode = new AudioWorkletNode(ctx, 'libvgm-player', { outputChannelCount: [2] });
+    origNode.connect(gain);
+    origNode.port.onmessage = (e) => onOrigStatus(e.data);
+  })().catch((e) => { origReady = null; throw e; }));
+}
+function onOrigStatus(m) {
+  if (m.id !== undefined && m.id !== origSeq) return;
+  if (m.type === 'loaded') {
+    origDuration = m.duration;
+    $('origChips').textContent = '元の音源チップ: ' + m.chips.join(' ・ ');
+  } else if (m.type === 'error') {
+    $('origInfo').textContent = '再生できませんでした: ' + m.message;
+  } else if (m.type === 'status') {
+    const d = m.duration || origDuration;
+    $('origTime').textContent = `${fmt(Math.min(m.time, d || m.time))} / ${fmt(d)}`;
+    if (!origSeeking && d) $('origSeek').value = Math.round(m.time / d * 1000);
+    $('origPlay').textContent = m.playing ? '❚❚ 一時停止' : '▶ 再生';
+  }
+}
 function openOrig() {
-  if (!state.songId) return;
+  if (!state.origVgm && !state.songId) return;
   if (state.playing) { post({ type: 'pause' }); setPlaying(false); }
-  $('origFrame').src = 'https://chiptune.app/?play=' + encodeURIComponent(state.songId);
   $('origPanel').hidden = false;
   $('origBtn').textContent = '🔁 変換した音に戻る';
+  const native = !!state.origVgm;
+  $('origPanel').classList.toggle('native', native);
+  $('origNative').hidden = !native;
+  $('origFrame').hidden = native;
+  if (native) {
+    $('origInfo').textContent = 'libvgm (chiptune.app と同じエミュレーター) でページ内再生';
+    $('origChips').textContent = '読み込み中…';
+    $('origTime').textContent = '0:00 / 0:00'; $('origSeek').value = 0;
+    const id = ++origSeq, data = state.origVgm.slice(0);
+    ensureOrig().then(() => origNode.port.postMessage({ type: 'load', id, data, play: true }, [data]))
+      .catch((e) => { $('origInfo').textContent = '元の音源を準備できませんでした (' + (e && e.message || e) + ')'; });
+  } else {
+    $('origInfo').textContent = 'chiptune.app の再生画面。始まらない時は ▶ を押してください';
+    $('origFrame').src = 'https://chiptune.app/?play=' + encodeURIComponent(state.songId);
+  }
   $('origPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 function closeOrig() {
   if ($('origPanel').hidden) return;
+  if (origNode) origNode.port.postMessage({ type: 'pause' });
   $('origFrame').src = 'about:blank'; // 元の音を止める
   $('origPanel').hidden = true;
   $('origBtn').textContent = '🎵 元の音源で聴く';
+}
+$('origPlay').onclick = () => {
+  if (!origNode) return;
+  const playing = $('origPlay').textContent.startsWith('❚❚');
+  origNode.port.postMessage({ type: playing ? 'pause' : 'play' });
+  $('origPlay').textContent = playing ? '▶ 再生' : '❚❚ 一時停止';
+};
+$('origSeek').oninput = () => { origSeeking = true; };
+$('origSeek').onchange = () => { origSeeking = false; if (origNode && origDuration) origNode.port.postMessage({ type: 'seek', time: $('origSeek').value / 1000 * origDuration }); };
+// VGM を読み込んだ時: 元の音源ボタンを有効に (chiptune.app に無い曲・PCM だけの基板でも元の音は聴ける)
+function enableOrigVgm(raw) {
+  state.origVgm = raw;
+  $('origBtn').disabled = false;
+  $('origBtn').title = '元の基板・機種の音源でページ内再生します (libvgm)';
 }
 $('origBtn').onclick = () => ($('origPanel').hidden ? openOrig() : closeOrig());
 $('origClose').onclick = closeOrig;
@@ -154,13 +210,15 @@ $('origClose').onclick = closeOrig;
 // ---------- VGM (アーケード基板などの音源チップ命令の記録) ----------
 async function loadVGM(buf, name, sub) {
   let src;
-  try { src = parseVGM(await unpackVGM(buf)); } catch (e) { $('songSub').textContent = '読み込めませんでした: ' + e.message; return false; }
+  let raw;
+  try { raw = await unpackVGM(buf); src = parseVGM(raw); } catch (e) { $('songSub').textContent = '読み込めませんでした: ' + e.message; return false; }
+  enableOrigVgm(raw);
   const nv = src.voices.length;
   let active = 0;
   for (let i = 0; i < src.count * nv; i++) if (src.data[i * 3 + 2] & 1) { active++; break; }
   if (!active && !src.hits.length) {
-    $('songTitle').textContent = name;
-    $('songSub').textContent = `この曲は音程を読み取れる音源を使っていません (${[...src.chips, ...src.unsupported].join(' / ') || '不明'})。PCM だけで鳴らす基板は非対応です`;
+    $('songTitle').textContent = name.replace(/\.vg[mz]$/i, '');
+    $('songSub').textContent = `この曲は音程を読み取れる音源を使っていません (${[...src.chips, ...src.unsupported].join(' / ') || '不明'})。PCM だけで鳴らす基板は別の音源に差し替えられませんが、「元の音源で聴く」で元の音は聴けます`;
     return false;
   }
   state.song = { reg: src, duration: src.duration };
@@ -561,6 +619,7 @@ $('gameFilter').oninput = () => showGames();
 
 // ---------- 再生コントロール ----------
 $('playBtn').onclick = async () => {
+  closeOrig();
   try { await ensureAudio(); } catch { return; }
   if (state.playing) { post({ type: 'pause' }); setPlaying(false); }
   else { post({ type: 'play' }); setPlaying(true); }

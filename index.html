@@ -6,7 +6,7 @@
 <title>Chip Swap</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261110g">
+<link rel="stylesheet" href="style.css?v=20261110h">
 </head>
 <body>
 <header>
@@ -105,10 +105,18 @@
     </div>
     <div id="origPanel" class="orig-panel" hidden>
       <div class="orig-head">
-        <span>🎵 元の音源 <span class="sub">chiptune.app の再生画面 (元の基板・機種の音源をエミュレート)。始まらない時は ▶ を押してください</span></span>
+        <span>🎵 元の音源 <span id="origInfo" class="sub"></span></span>
         <button id="origClose" class="ghost">✕ 閉じる</button>
       </div>
-      <iframe id="origFrame" title="元の音源 (chiptune.app)" allow="autoplay" src="about:blank"></iframe>
+      <div id="origNative" class="orig-native" hidden>
+        <div class="transport">
+          <button id="origPlay">❚❚ 一時停止</button>
+          <span id="origTime" class="time">0:00 / 0:00</span>
+          <input id="origSeek" type="range" min="0" max="1000" value="0">
+        </div>
+        <div id="origChips" class="sub"></div>
+      </div>
+      <iframe id="origFrame" title="元の音源 (chiptune.app)" allow="autoplay" src="about:blank" hidden></iframe>
     </div>
     <canvas id="scope" height="90"></canvas>
 
@@ -137,7 +145,7 @@
   </section>
 </main>
 
-<footer>曲データ: <a href="https://chiptune.app/" target="_blank" rel="noopener">chiptune.app (Chip Player JS)</a> ・ 音源はブラウザ内で合成した近似エミュレーションです</footer>
-<script type="module" src="js/app.js?v=20261110g"></script>
+<footer>曲データ: <a href="https://chiptune.app/" target="_blank" rel="noopener">chiptune.app (Chip Player JS)</a> ・ 差し替えた音源はブラウザ内で合成した近似エミュレーションです ・ 「元の音源で聴く」は <a href="https://github.com/ValleyBell/libvgm" target="_blank" rel="noopener">libvgm</a> (Valley Bell ほか) と <a href="https://github.com/mmontag/chip-player-js" target="_blank" rel="noopener">Chip Player JS</a> (Matt Montag) のコードを使用 ・ <a href="https://github.com/zitnei/Chip-Swap" target="_blank" rel="noopener">ソースコード</a> (GPL-3.0)</footer>
+<script type="module" src="js/app.js?v=20261110h"></script>
 </body>
 </html>

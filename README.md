@@ -77,3 +77,16 @@ node serve.js
 | `js/worklet.js` / `js/export-worker.js` | 音声出力・書き出し処理 |
 
 曲データは chiptune.app (Chip Player JS) から取得しています。
+
+## 元の音源で聴く
+
+曲を選んで「🎵 元の音源で聴く」を押すと、元の基板・機種の音源チップのまま再生します。
+
+- VGM: [libvgm](https://github.com/ValleyBell/libvgm) を WebAssembly にビルドしてページ内で再生します (chiptune.app と同じエミュレーター)。QSound などの PCM 音源の基板や、手持ちの .vgz ファイルも聴けます。
+- MIDI: chiptune.app の再生画面をページ内に表示します。
+
+## ライセンス
+
+Chip Swap は **GPL-3.0** で公開しています ([LICENSE](LICENSE))。
+
+「元の音源で聴く」の再生エンジンには、[Chip Player JS](https://github.com/mmontag/chip-player-js) (Matt Montag, GPL-3.0) の libvgm-wrapper と、[libvgm](https://github.com/ValleyBell/libvgm) (Valley Bell ほか) を使っています。詳しい出どころ・ビルド手順は [third_party/README.md](third_party/README.md) を見てください。

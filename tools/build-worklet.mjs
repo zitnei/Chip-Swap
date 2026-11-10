@@ -26,3 +26,12 @@ for (const file of ORDER) {
 }
 fs.writeFileSync(path.join(root, 'worklet.bundle.js'), out);
 console.log('js/worklet.bundle.js', (out.length / 1024).toFixed(1) + ' KB');
+
+// 「元の音源で聴く」用: libvgm (Emscripten でビルドしたもの、GPL) + 再生処理
+const vendor = fs.readFileSync(path.join(root, 'vendor', 'libvgm.js'), 'utf8');
+const proc = fs.readFileSync(path.join(root, 'original-worklet.js'), 'utf8');
+const orig = '// 自動生成ファイル: tools/build-worklet.mjs で作成。直接編集しないでください。\n'
+  + '// libvgm (ValleyBell) + Chip Player JS の libvgm-wrapper (mmontag) を Emscripten でビルドしたもの。GPL-3.0。\n'
+  + vendor + '\n' + proc;
+fs.writeFileSync(path.join(root, 'original-worklet.bundle.js'), orig);
+console.log('js/original-worklet.bundle.js', (orig.length / 1024).toFixed(1) + ' KB');
