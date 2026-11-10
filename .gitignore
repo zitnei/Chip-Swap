@@ -1,0 +1,6 @@
+.claude/
+.playwright-mcp/
+_test/
+node_modules/
+*.wav
+*.vgm

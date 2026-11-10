@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chip Swap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>CHIP SWAP <small>シーケンスデータを、別の音源で鳴らす</small></h1>
+</header>
+
+<main>
+  <!-- 曲を選ぶ -->
+  <section class="panel source">
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="browse">chiptune.app</button>
+      <button class="tab" data-tab="local">ファイル</button>
+    </div>
+
+    <div class="tabpane" id="tab-browse">
+      <form id="searchForm" class="row">
+        <input id="searchInput" type="search" placeholder="曲名・ゲーム名で検索 (例: zelda, gradius)">
+        <button type="submit">検索</button>
+      </form>
+      <div id="crumbs" class="crumbs"></div>
+      <ul id="list" class="list"></ul>
+      <p class="hint">MIDI (.mid) と ZX チューン (.ay ・「Project AY」フォルダ) を選べます。VGM・NSF などは対象外です。</p>
+    </div>
+
+    <div class="tabpane hidden" id="tab-local">
+      <label id="drop" class="drop">
+        <input id="fileInput" type="file" accept=".mid,.midi,.kar,.rmi,.ay" hidden>
+        ここに .mid / .ay ファイルをドロップ<br>またはクリックして選択
+      </label>
+      <form id="urlForm" class="row">
+        <input id="urlInput" type="url" placeholder="MIDI ファイルの URL">
+        <button type="submit">読込</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- 再生 -->
+  <section class="panel player">
+    <div class="now">
+      <div id="songTitle" class="title">曲が選ばれていません</div>
+      <div id="songSub" class="sub">左のリストから MIDI か ZX チューンを選んでください</div>
+      <label id="subRow" class="sub" hidden>曲: <select id="subSel"></select></label>
+    </div>
+    <div class="transport">
+      <button id="playBtn" disabled>▶ 再生</button>
+      <button id="stopBtn" disabled>■</button>
+      <span id="time" class="time">0:00 / 0:00</span>
+      <input id="seek" type="range" min="0" max="1000" value="0" disabled>
+      <label class="chk"><input id="loopChk" type="checkbox"> ループ</label>
+    </div>
+    <div class="row opts">
+      <label>同時発音数
+        <select id="scaleSel">
+          <option value="1">実機どおり</option>
+          <option value="2">2倍</option>
+          <option value="3">3倍</option>
+        </select>
+      </label>
+      <label>音量 <input id="volume" type="range" min="0" max="100" value="80"></label>
+      <button id="exportBtn" disabled>WAV 書き出し</button>
+      <button id="vgmBtn" disabled title="選んだ音源チップのレジスタ命令として書き出します">VGM 書き出し</button>
+      <span id="exportStatus" class="sub"></span>
+    </div>
+    <canvas id="scope" height="90"></canvas>
+
+    <h2>音源を選ぶ</h2>
+    <div id="chipFilter" class="filter">
+      <button class="tab active" data-type="all">すべて</button>
+      <button class="tab" data-type="fm">FM音源</button>
+      <button class="tab" data-type="psg">PSG音源</button>
+      <button class="tab" data-type="wave">波形メモリ音源</button>
+    </div>
+    <div id="chipGrid" class="chips"></div>
+
+    <div class="two">
+      <div>
+        <h2>チップのチャンネル</h2>
+        <div id="hwChans" class="hw"></div>
+      </div>
+      <div>
+        <h2>パート</h2>
+        <table class="parts">
+          <thead><tr><th>ch</th><th>パート</th><th>音色</th><th>ミュート</th></tr></thead>
+          <tbody id="parts"><tr><td colspan="4" class="sub">曲を読み込むと表示されます</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>曲データ: <a href="https://chiptune.app/" target="_blank" rel="noopener">chiptune.app (Chip Player JS)</a> ・ 音源はブラウザ内で合成した近似エミュレーションです</footer>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
