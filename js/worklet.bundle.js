@@ -1231,9 +1231,41 @@ class Engine {
       for (let i = 0; i < n; i++) {
         y1 += a * (X[i] - y1); y2 += a * (y1 - y2);
         dc = y2 - px + .9995 * dc; px = y2;
-        X[i] = dc > 1 ? 1 : dc < -1 ? -1 : dc;
+        X[i] = dc;
       }
       this.lp1[ch] = y1; this.lp2[ch] = y2; this.dc[ch] = dc; this.dcIn[ch] = px;
+    }
+    this.agc(L, R, n);
+  }
+
+  // 自動音量調整: 曲や音源チップによる音量の差をならし、元の音と同じくらいの大きさにそろえる。
+  // ゆっくり追従するので曲の中の強弱は残る。大きすぎる瞬間はやわらかく丸めて音割れを防ぐ。
+  resetLevel() { this.agcPow = 0; this.agcGain = 1; this.agcTime = 0; }
+  agc(L, R, n) {
+    const TARGET = .17, MAXG = 8, MING = .5;
+    if (this.agcPow === undefined) this.resetLevel();
+    let ms = 0;
+    for (let i = 0; i < n; i++) ms += L[i] * L[i] + R[i] * R[i];
+    ms /= 2 * n;
+    const sec = n / this.sr;
+    if (ms > 1e-6) {
+      // 最初の 2 秒は速く、その後はゆっくり (約 3 秒) 追従
+      const T = this.agcTime < 2 ? .4 : 3;
+      this.agcTime += sec;
+      this.agcPow = this.agcPow ? this.agcPow + (ms - this.agcPow) * (1 - Math.exp(-sec / T)) : ms;
+    }
+    const want = this.agcPow ? Math.min(MAXG, Math.max(MING, TARGET / Math.sqrt(this.agcPow))) : 1;
+    const g0 = this.agcGain;
+    const g1 = this.agcGain = g0 + (want - g0) * (1 - Math.exp(-sec / (this.agcTime < 2 ? .2 : .8)));
+    for (let ch = 0; ch < 2; ch++) {
+      const X = ch ? R : L;
+      if (ch && R === L) break;
+      for (let i = 0; i < n; i++) {
+        let y = X[i] * (g0 + (g1 - g0) * i / n);
+        const a = y < 0 ? -y : y;
+        if (a > .8) y = (y < 0 ? -1 : 1) * (.8 + .2 * Math.tanh((a - .8) / .2));
+        X[i] = y;
+      }
     }
   }
 
@@ -1269,7 +1301,7 @@ class Player {
   }
   snapshot() { return this.engine.snapshot(); }
   setChip(id, scale) { this.engine.setChip(id, scale); }
-  load(events, duration) { this.events = events; this.duration = duration; this.seek(0); }
+  load(events, duration) { this.events = events; this.duration = duration; this.engine.resetLevel(); this.seek(0); }
   seek(sec) {
     const e = this.engine;
     e.reset();
@@ -1329,6 +1361,7 @@ class ZXPlayer {
   get native() { return this.engine.def.id === 'zx128'; }
 
   load(frames, count, clock) {
+    this.engine.resetLevel();
     this.frames = frames; this.count = count; this.clock = clock;
     this.duration = count / ZX_RATE;
     this.seek(0);
@@ -1506,9 +1539,10 @@ class ZXPlayer {
     for (let ch = 0; ch < 2; ch++) {
       const X = ch ? R : L;
       let y = this.lp[ch];
-      for (let i = 0; i < n; i++) { y += (X[i] - y) * .0008; X[i] = Math.max(-1, Math.min(1, (X[i] - y) * 1.6)); }
+      for (let i = 0; i < n; i++) { y += (X[i] - y) * .0008; X[i] = (X[i] - y) * 1.6; }
       this.lp[ch] = y;
     }
+    this.engine.agc(L, R, n);
   }
 
   snapshot() {
@@ -1554,7 +1588,7 @@ class RegPlayer {
       return { ...s, src: s.busy ? (c.voice !== undefined && names[c.voice] ? names[c.voice].name : s.drum ? 'ドラム' : '') : '' };
     });
   }
-  load(src) { this.src = src; this.duration = src.count / FRAME_HZ_VGM; this.seek(0); }
+  load(src) { this.src = src; this.duration = src.count / FRAME_HZ_VGM; this.engine.resetLevel(); this.seek(0); }
   seek(sec) {
     this.engine.reset();
     this.map.clear(); this.noiseSlot = null;

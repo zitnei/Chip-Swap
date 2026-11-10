@@ -20,6 +20,7 @@ export class ZXPlayer {
   get native() { return this.engine.def.id === 'zx128'; }
 
   load(frames, count, clock) {
+    this.engine.resetLevel();
     this.frames = frames; this.count = count; this.clock = clock;
     this.duration = count / ZX_RATE;
     this.seek(0);
@@ -197,9 +198,10 @@ export class ZXPlayer {
     for (let ch = 0; ch < 2; ch++) {
       const X = ch ? R : L;
       let y = this.lp[ch];
-      for (let i = 0; i < n; i++) { y += (X[i] - y) * .0008; X[i] = Math.max(-1, Math.min(1, (X[i] - y) * 1.6)); }
+      for (let i = 0; i < n; i++) { y += (X[i] - y) * .0008; X[i] = (X[i] - y) * 1.6; }
       this.lp[ch] = y;
     }
+    this.engine.agc(L, R, n);
   }
 
   snapshot() {

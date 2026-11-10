@@ -6,7 +6,7 @@ import { isVGM, unpackVGM, parseVGM } from './vgmin.js';
 
 // chiptune.app の API と曲ファイルは chiptune.app と localhost からしか読めない。
 // それ以外 (GitHub Pages の公開ページ) では Cloudflare Workers の中継 (proxy/worker.js) を通す。
-const APP_VERSION = '20261110h'; // 更新したら index.html の ?v= と一緒に変える
+const APP_VERSION = '20261110i'; // 更新したら index.html の ?v= と一緒に変える
 const PROXY = 'https://chip-swap-proxy.zitnei.workers.dev';
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const API = 'https://chiptune.app/api';

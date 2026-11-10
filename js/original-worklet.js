@@ -26,10 +26,17 @@ class LibVGMProcessor extends AudioWorkletProcessor {
       case 'load': {
         this.loadId = m.id;
         const data = new Uint8Array(m.data);
+        if (data.length < 64 || data[0] !== 0x56 || data[1] !== 0x67 || data[2] !== 0x6d || data[3] !== 0x20) {
+          this.port.postMessage({ type: 'error', id: m.id, message: 'VGM ファイルではありません' }); return;
+        }
+        this.playing = false;
+        M._lvgm_stop(this.ctx);
         const p = M._malloc(data.length);
         M.HEAPU8.set(data, p);
         const err = M._lvgm_load_data(this.ctx, p, data.length);
-        M._free(p);
+        // libvgm は再生中も読み込んだデータを参照するので、解放するのは次の曲を読み込んだ後
+        if (this.dataPtr) M._free(this.dataPtr);
+        this.dataPtr = p;
         if (err !== 0) { this.port.postMessage({ type: 'error', id: m.id, message: 'この VGM は読み込めませんでした (code ' + err + ')' }); return; }
         M._lvgm_start(this.ctx);
         this.duration = M._lvgm_get_duration_ms(this.ctx) / 1000;

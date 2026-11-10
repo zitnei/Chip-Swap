@@ -21,7 +21,7 @@ export class RegPlayer {
       return { ...s, src: s.busy ? (c.voice !== undefined && names[c.voice] ? names[c.voice].name : s.drum ? 'ドラム' : '') : '' };
     });
   }
-  load(src) { this.src = src; this.duration = src.count / FRAME_HZ_VGM; this.seek(0); }
+  load(src) { this.src = src; this.duration = src.count / FRAME_HZ_VGM; this.engine.resetLevel(); this.seek(0); }
   seek(sec) {
     this.engine.reset();
     this.map.clear(); this.noiseSlot = null;
