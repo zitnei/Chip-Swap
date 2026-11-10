@@ -6,7 +6,7 @@ import { isVGM, unpackVGM, parseVGM } from './vgmin.js';
 
 // chiptune.app の API と曲ファイルは chiptune.app と localhost からしか読めない。
 // それ以外 (GitHub Pages の公開ページ) では Cloudflare Workers の中継 (proxy/worker.js) を通す。
-const APP_VERSION = '20261110f'; // 更新したら index.html の ?v= と一緒に変える
+const APP_VERSION = '20261110g'; // 更新したら index.html の ?v= と一緒に変える
 const PROXY = 'https://chip-swap-proxy.zitnei.workers.dev';
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const API = 'https://chiptune.app/api';
@@ -470,6 +470,8 @@ async function loadGames() {
 function renderScopes(gs) {
   const box = $('gameScopes'); box.innerHTML = '';
   const scopes = [['all', 'すべて'], ...SERIES.map((s) => ['series:' + s.id, s.label]), ...MAKERS.map((m) => ['maker:' + m, m])];
+  // 「1つ上へ」で入った機種・アーケードのまとまりも、選択中のボタンとして出す
+  if (!scopes.some(([id]) => id === gameScope)) scopes.push([gameScope, scopeLabel(gameScope)]);
   for (const [id, label] of scopes) {
     const b = document.createElement('button');
     b.className = 'tab' + (gameScope === id ? ' active' : ''); b.textContent = label;
@@ -477,8 +479,14 @@ function renderScopes(gs) {
     box.append(b);
   }
 }
+function scopeLabel(id) {
+  const [kind, val] = id.split(':');
+  return kind === 'platform' ? val : kind === 'arcade' ? 'アーケード (メーカー別以外)' : kind === 'maker' ? val : id;
+}
+// ゲームの 1 つ上のまとまり: メーカー別フォルダ → そのメーカー、家庭用版・MIDI → その機種・種類、それ以外 → アーケード
+const parentScope = (g) => (g.maker ? 'maker:' + g.maker : g.platform ? 'platform:' + g.platform : 'arcade');
 function gameMsg(text) { const ul = $('gameList'); ul.innerHTML = ''; const li = document.createElement('li'); li.className = 'msg'; li.textContent = text; ul.append(li); }
-let lastGame = null, gameListScroll = 0;
+let lastGame = null;
 async function showGames(restore = false) {
   $('gameHead').hidden = true; $('gameIndex').hidden = false;
   let gs;
@@ -486,11 +494,12 @@ async function showGames(restore = false) {
   renderScopes(gs);
   const q = $('gameFilter').value.trim().toLowerCase();
   const [kind, val] = gameScope.split(':');
-  const shown = gs.filter((g) => (kind === 'series' ? g.series === val : kind === 'maker' ? g.maker === val : true) && (!q || g.search.includes(q)));
+  const inScope = (g) => (kind === 'series' ? g.series === val : kind === 'maker' ? g.maker === val : kind === 'platform' ? g.platform === val : kind === 'arcade' ? !g.home && !g.maker : true);
+  const shown = gs.filter((g) => inScope(g) && (!q || g.search.includes(q)));
   const arcade = gs.filter((g) => !g.home).length;
   $('gameCount').textContent = q || gameScope !== 'all'
     ? `${shown.length} 作品・${shown.reduce((n, g) => n + g.count, 0).toLocaleString()} 曲`
-    : `アーケード ${arcade} 作品 + 家庭用版 ${gs.length - arcade} 作品・${gs.reduce((n, g) => n + g.count, 0).toLocaleString()} 曲`;
+    : `アーケード ${arcade} 作品 + 家庭用版・MIDI ${gs.length - arcade} 作品・${gs.reduce((n, g) => n + g.count, 0).toLocaleString()} 曲`;
   const ul = $('gameList'); ul.innerHTML = '';
   const letters = new Set();
   let last = '';
@@ -506,7 +515,9 @@ async function showGames(restore = false) {
     ul.append(li);
   }
   if (!shown.length) gameMsg('該当するゲームはありません');
-  ul.scrollTop = restore ? gameListScroll : 0;
+  ul.scrollTop = 0;
+  const lastLi = restore && ul.querySelector('li.last-game');
+  if (lastLi) ul.scrollTop += lastLi.getBoundingClientRect().top - ul.getBoundingClientRect().top - ul.clientHeight / 3;
   const bar = $('gameLetters'); bar.innerHTML = '';
   for (const L of ['#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ']) {
     const b = document.createElement('button');
@@ -516,8 +527,9 @@ async function showGames(restore = false) {
   }
 }
 async function showGame(g) {
-  if (!$('gameIndex').hidden) gameListScroll = $('gameList').scrollTop;
   lastGame = g;
+  $('gameUp').textContent = '▲ 1つ上へ (' + scopeLabel(parentScope(g)) + ')';
+  $('gameUp').onclick = () => { gameScope = parentScope(g); $('gameFilter').value = ''; showGames(true); };
   $('gameFolder').onclick = () => { selectTab('browse'); browse(parentOf(g.path)); };
   $('gameIndex').hidden = true; $('gameHead').hidden = false;
   $('gameTitle').textContent = g.title;
@@ -541,7 +553,10 @@ async function openGameByPath(dir) {
   selectTab('games');
   showGame(g);
 }
-$('gameBack').onclick = () => showGames(true);
+// 一覧に戻る: 絞り込みを外して全ゲームの一覧へ (見ていたゲームの位置)
+function backToList() { gameScope = 'all'; $('gameFilter').value = ''; showGames(true); }
+$('gameBack').onclick = backToList;
+$('folderToList').onclick = () => { selectTab('games'); backToList(); };
 $('gameFilter').oninput = () => showGames();
 
 // ---------- 再生コントロール ----------
