@@ -6,7 +6,7 @@ import { isVGM, unpackVGM, parseVGM } from './vgmin.js';
 
 // chiptune.app の API と曲ファイルは chiptune.app と localhost からしか読めない。
 // それ以外 (GitHub Pages の公開ページ) では Cloudflare Workers の中継 (proxy/worker.js) を通す。
-const APP_VERSION = '20261110d'; // 更新したら index.html の ?v= と一緒に変える
+const APP_VERSION = '20261110e'; // 更新したら index.html の ?v= と一緒に変える
 const PROXY = 'https://chip-swap-proxy.zitnei.workers.dev';
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const API = 'https://chiptune.app/api';
@@ -120,11 +120,36 @@ async function loadSong(buf, name, sub, path = '', songId = null) {
   post({ type: 'play' }); setPlaying(true);
 }
 
+// ---------- 元の音源で聴く (chiptune.app の再生画面をページ内に表示) / YouTube で探す ----------
 function setOrigLink(songId) {
-  const a = $('origLink');
-  a.hidden = !songId;
-  if (songId) a.href = 'https://chiptune.app/?play=' + encodeURIComponent(songId);
+  state.songId = songId || null;
+  closeOrig();
+  $('origBtn').disabled = !songId;
+  $('origBtn').title = songId ? '元の基板・機種の音源で再生します (chiptune.app の再生画面)' : 'この曲は chiptune.app の曲ではないため、元の音源では聴けません';
+  // YouTube 検索: ゲーム名 + 曲名
+  const parts = (state.curFile || '').split('/');
+  const game = parts.length > 1 ? splitTitle(parts.at(-2)).title : '';
+  const track = (parts.at(-1) || '').replace(/\.[^.]+$/, '').replace(/^\d+\s*/, '');
+  const q = [game, track].filter(Boolean).join(' ');
+  $('ytBtn').hidden = !q;
+  if (q) $('ytBtn').href = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q);
 }
+function openOrig() {
+  if (!state.songId) return;
+  if (state.playing) { post({ type: 'pause' }); setPlaying(false); }
+  $('origFrame').src = 'https://chiptune.app/?play=' + encodeURIComponent(state.songId);
+  $('origPanel').hidden = false;
+  $('origBtn').textContent = '🔁 変換した音に戻る';
+  $('origPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function closeOrig() {
+  if ($('origPanel').hidden) return;
+  $('origFrame').src = 'about:blank'; // 元の音を止める
+  $('origPanel').hidden = true;
+  $('origBtn').textContent = '🎵 元の音源で聴く';
+}
+$('origBtn').onclick = () => ($('origPanel').hidden ? openOrig() : closeOrig());
+$('origClose').onclick = closeOrig;
 
 // ---------- VGM (アーケード基板などの音源チップ命令の記録) ----------
 async function loadVGM(buf, name, sub) {
@@ -382,7 +407,7 @@ function trackFiles(dirs, path) {
   const out = [];
   for (const e of dirs[path] || []) {
     if (typeof e[1] === 'number') out.push(...trackFiles(dirs, path + '/' + e[0]));
-    else out.push({ file: path.slice(1) + '/' + e[0], songId: e[1] || null, label: e[0].replace(/\.vg[mz]$/i, '') });
+    else out.push({ file: path.slice(1) + '/' + e[0], songId: e[1] || null, label: e[0].replace(/\.(vg[mz]|midi?|kar|rmi)$/i, '') });
   }
   return out;
 }
@@ -397,7 +422,7 @@ async function loadGames() {
   const isDir = (e) => typeof e[1] === 'number';
   const make = (path, name, count, extra) => {
     const t = splitTitle(name);
-    const g = { path, name, count, title: t.title, sys: t.sys, maker: '', platform: '', ...extra };
+    const g = { path, name, count, title: t.title, sys: t.sys, maker: '', platform: '', top: 'VGM Rips', ...extra };
     g.series = (SERIES.find((s) => s.re.test(name)) || {}).id || '';
     g.label = [g.maker, g.platform, g.sys].filter(Boolean).join(' ・ ');
     g.search = [name, g.maker, g.platform, g.series === 'gradius' ? 'グラディウス gradius' : ''].join(' ').toLowerCase();
@@ -415,6 +440,26 @@ async function loadGames() {
   // 家庭用版 (グラディウス シリーズなど)
   for (const [plat, label] of Object.entries(PLATFORM)) {
     for (const e of dirs['/VGM Rips/' + plat] || []) if (isDir(e)) games.push(make('/VGM Rips/' + plat + '/' + e[0], e[0], e[1], { platform: label, home: true }));
+  }
+  // アーケード版の MIDI (アーケード版グラディウスなど、VGM が無いもの)
+  const MIDI_GAMES = [
+    ['Sound Canvas MIDI Collection', '/Sound Canvas MIDI Collection/Konami/Gradius', 'アーケード版 MIDI (Sound Canvas)'],
+    ['vgmusic.com MIDI', '/vgmusic.com MIDI/Arcade/Gradius II - Gofer No Yabou', 'アーケード版 MIDI'],
+    ['vgmusic.com MIDI', '/vgmusic.com MIDI/Arcade/Gradius III', 'アーケード版 MIDI'],
+    ['vgmusic.com MIDI', '/vgmusic.com MIDI/Arcade/Life Force (Japan)', 'アーケード版 MIDI'],
+    ['vgmusic.com MIDI', '/vgmusic.com MIDI/Arcade/Nemesis 2 - Vulcan Venture', 'アーケード版 MIDI'],
+    ['vgmusic.com MIDI', '/vgmusic.com MIDI/Arcade/Salamander', 'アーケード版 MIDI'],
+    ['Sound Canvas MIDI Collection', '/Sound Canvas MIDI Collection/Konami/Life Force', 'アーケード版 MIDI (Sound Canvas)'],
+    ['Sound Canvas MIDI Collection', '/Sound Canvas MIDI Collection/Konami/Salamander 2', 'アーケード版 MIDI (Sound Canvas)'],
+    ['Game MIDI', '/Game MIDI/- Arranged -/Gradius (NES∕C64, 1986)', 'アレンジ MIDI'],
+  ];
+  for (const [top, path, label] of MIDI_GAMES) {
+    try {
+      const d = await catTop(top);
+      const n = (d[path] || []).filter((e) => !isDir(e)).length;
+      const name = path.split('/').pop().replace(/\s*\(.*\)$/, '');
+      if (n) games.push(make(path, name, n, { platform: label, home: true, top, midi: true }));
+    } catch {}
   }
   games.sort((a, b) => a.title.localeCompare(b.title, 'en', { sensitivity: 'base' }) || a.label.localeCompare(b.label));
   return games;
@@ -468,7 +513,7 @@ async function showGame(g) {
   $('gameIndex').hidden = true; $('gameHead').hidden = false;
   $('gameTitle').textContent = g.title;
   $('gameSys').textContent = [g.label, g.count + '曲'].filter(Boolean).join(' ・ ');
-  const dirs = await catTop('VGM Rips');
+  const dirs = await catTop(g.top || 'VGM Rips');
   const tracks = trackFiles(dirs, g.path);
   const ul = $('gameList'); ul.innerHTML = '';
   tracks.forEach((t, i) => {

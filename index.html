@@ -6,7 +6,7 @@
 <title>Chip Swap</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261110d">
+<link rel="stylesheet" href="style.css?v=20261110e">
 </head>
 <body>
 <header>
@@ -36,7 +36,7 @@
         <button id="gamePlayAll">▶ 1曲目から連続再生</button>
       </div>
       <ul id="gameList" class="list"></ul>
-      <p class="hint">アーケード基板の VGM (chiptune.app「VGM Rips / Arcade」) と、グラディウス シリーズの家庭用版をゲームごとに選べます。PCM だけで鳴らす基板 (CPS-2 の QSound など) の曲は再生できません。</p>
+      <p class="hint">アーケード基板の VGM (chiptune.app「VGM Rips / Arcade」) と、グラディウス シリーズ (家庭用版・アーケード版の MIDI) をゲームごとに選べます。PCM だけで鳴らす基板 (CPS-2 の QSound など) の曲は再生できません。</p>
     </div>
 
     <div class="tabpane hidden" id="tab-browse">
@@ -66,7 +66,10 @@
     <div class="now">
       <div id="songTitle" class="title">曲が選ばれていません</div>
       <div id="songSub" class="sub">左のリストから曲を選んでください</div>
-      <a id="origLink" class="sub orig" target="_blank" rel="noopener" hidden>元の音を chiptune.app で聴く ↗</a>
+      <div class="orig-row">
+        <button id="origBtn" class="ghost" disabled>🎵 元の音源で聴く</button>
+        <a id="ytBtn" class="ghost-link" target="_blank" rel="noopener" hidden>YouTube で探す ↗</a>
+      </div>
       <label id="subRow" class="sub" hidden>曲: <select id="subSel"></select></label>
     </div>
     <div class="transport">
@@ -91,6 +94,13 @@
       <button id="exportBtn" disabled>WAV 書き出し</button>
       <button id="vgmBtn" disabled title="選んだ音源チップのレジスタ命令として書き出します">VGM 書き出し</button>
       <span id="exportStatus" class="sub"></span>
+    </div>
+    <div id="origPanel" class="orig-panel" hidden>
+      <div class="orig-head">
+        <span>🎵 元の音源 <span class="sub">chiptune.app の再生画面 (元の基板・機種の音源をエミュレート)。始まらない時は ▶ を押してください</span></span>
+        <button id="origClose" class="ghost">✕ 閉じる</button>
+      </div>
+      <iframe id="origFrame" title="元の音源 (chiptune.app)" allow="autoplay" src="about:blank"></iframe>
     </div>
     <canvas id="scope" height="90"></canvas>
 
@@ -120,6 +130,6 @@
 </main>
 
 <footer>曲データ: <a href="https://chiptune.app/" target="_blank" rel="noopener">chiptune.app (Chip Player JS)</a> ・ 音源はブラウザ内で合成した近似エミュレーションです</footer>
-<script type="module" src="js/app.js?v=20261110d"></script>
+<script type="module" src="js/app.js?v=20261110e"></script>
 </body>
 </html>

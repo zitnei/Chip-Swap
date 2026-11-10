@@ -90,7 +90,15 @@ input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
 
 .now .title { font-size: 20px; font-weight: 700; word-break: break-all; }
 .sub { color: var(--dim); font-size: 13px; }
-.orig { display: inline-block; margin-top: 2px; color: var(--accent); }
+.orig-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+button.ghost { background: var(--panel); color: var(--accent); border-color: var(--accent); }
+button.ghost:disabled { color: var(--dim); border-color: var(--border); }
+.ghost-link { font-size: 14px; font-weight: 600; text-decoration: none; padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); }
+.ghost-link:hover { border-color: var(--accent); color: var(--accent); }
+.orig-panel { margin-top: 12px; border: 2px solid var(--accent); border-radius: 10px; overflow: hidden; background: #000080; }
+.orig-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; background: var(--accent-soft); font-weight: 700; flex-wrap: wrap; }
+.orig-head .sub { font-weight: normal; margin-left: 6px; }
+.orig-panel iframe { display: block; width: 100%; height: 420px; border: 0; }
 .transport { display: flex; align-items: center; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
 .transport #seek { flex: 1; min-width: 120px; }
 .time { min-width: 110px; text-align: center; font-variant-numeric: tabular-nums; }
