@@ -78,6 +78,14 @@ node serve.js
 
 曲データは chiptune.app (Chip Player JS) から取得しています。
 
+## スーパーファミコン (SPC)
+
+「フォルダ」タブで検索するか「Nintendo SNES」フォルダから .spc を選べます (手持ちの .spc も読み込めます)。
+
+- SPC エミュレーター (game-music-emu の snes_spc) を動かしながら、8 チャンネルの音程・音量・発音を読み取り、選んだ音源で鳴らし直します
+- SNES は音色が録音したサンプルなので、サンプルの繰り返し部分の周期を測って実際の音の高さを求めています。音程の無いサンプルは、波形の特徴からキック・スネア・ハイハットなどのドラムに振り分けます
+- 「元の音源で聴く」で、元のスーパーファミコンの音でも聴けます
+
 ## ゲームの音色で鳴らす
 
 「音源を選ぶ」の「🎮 ゲームの音色で選ぶ」で、別のゲームの音色を使って今の曲を鳴らせます (例: パックマニアの曲をサラマンダの音色で)。
@@ -103,4 +111,4 @@ node serve.js
 
 Chip Swap は **GPL-3.0** で公開しています ([LICENSE](LICENSE))。
 
-「元の音源で聴く」の再生エンジンには、[Chip Player JS](https://github.com/mmontag/chip-player-js) (Matt Montag, GPL-3.0) の libvgm-wrapper、[libvgm](https://github.com/ValleyBell/libvgm) (Valley Bell ほか)、[FluidLite](https://github.com/divideconcept/FluidLite) (LGPL-2.1) を使っています。詳しい出どころ・ビルド手順は [third_party/README.md](third_party/README.md) を見てください。
+「元の音源で聴く」の再生エンジンには、[Chip Player JS](https://github.com/mmontag/chip-player-js) (Matt Montag, GPL-3.0) の libvgm-wrapper、[libvgm](https://github.com/ValleyBell/libvgm) (Valley Bell ほか)、[FluidLite](https://github.com/divideconcept/FluidLite) (LGPL-2.1)、[game-music-emu](https://github.com/libgme/game-music-emu) の SPC 部分 (blargg、LGPL-2.1) を使っています。詳しい出どころ・ビルド手順は [third_party/README.md](third_party/README.md) を見てください。

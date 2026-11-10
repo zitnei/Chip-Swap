@@ -4,19 +4,21 @@ import { VGM_SUPPORTED } from './vgm.js';
 import { isAY, parseAY, runAY } from './ay.js';
 import { isVGM, unpackVGM, parseVGM } from './vgmin.js';
 import { analyzeVGMs, buildToneSet } from './instruments.js';
+import { isSPC, spcToReg, spcTags, loadSpcCore } from './spc.js';
 
 // chiptune.app の API と曲ファイルは chiptune.app と localhost からしか読めない。
 // それ以外 (GitHub Pages の公開ページ) では Cloudflare Workers の中継 (proxy/worker.js) を通す。
-const APP_VERSION = '20261110l'; // 更新したら index.html の ?v= と一緒に変える
+const APP_VERSION = '20261110m'; // 更新したら index.html の ?v= と一緒に変える
 const PROXY = 'https://chip-swap-proxy.zitnei.workers.dev';
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-const API = 'https://chiptune.app/api';
+// (API は下の PROXY が決まってから設定)
 const FILES = LOCAL ? 'https://gifx.co/music/' : PROXY + '/music/';
+const API = LOCAL ? 'https://chiptune.app/api' : PROXY + '/api';
 const $ = (id) => document.getElementById(id);
 const NOTE = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const noteName = (n) => NOTE[n % 12] + (Math.floor(n / 12) - 1);
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-const isMidi = (p) => /\.(mid|midi|kar|rmi|ay|vgm|vgz)$/i.test(p);
+const isMidi = (p) => /\.(mid|midi|kar|rmi|ay|vgm|vgz|spc)$/i.test(p);
 const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
 
 const state = {
@@ -105,6 +107,7 @@ async function loadSong(buf, name, sub, path = '', songId = null) {
   if (isAY(buf)) return loadZX(buf, name, sub, /\/CPC\//i.test(path));
   $('subRow').hidden = true;
   if (isVGM(buf)) return loadVGM(buf, name, sub);
+  if (isSPC(buf)) return loadSPC(buf, name, sub);
   let song;
   try { song = parseMidi(buf); } catch (e) { alert('読み込めませんでした: ' + e.message); return; }
   if (!song.events.some((e) => e.type === 'on')) { alert('ノートが入っていない MIDI です'); return; }
@@ -134,6 +137,7 @@ const DEFAULT_SF = 'gmgsx-plus.sf2';
 function setOrigLink(songId) {
   state.songId = songId || null;
   state.origVgm = null;
+  state.origSpc = null;
   closeOrig();
   setOrigBtn(false);
   // YouTube 検索: ゲーム名 + 曲名
@@ -149,6 +153,7 @@ function setOrigBtn(on, title) {
   $('origBtn').title = on ? title : 'この曲は元の音源で聴けません';
 }
 const ORIG_ENGINES = {
+  spc: { file: 'js/original-spc-worklet.bundle.js', proc: 'spc-player' },
   vgm: { file: 'js/original-worklet.bundle.js', proc: 'libvgm-player' },
   midi: { file: 'js/original-midi-worklet.bundle.js', proc: 'fluid-player' },
 };
@@ -197,7 +202,7 @@ function openOrig() {
     if (!state.playing) { post({ type: 'play' }); setPlaying(true); }
     return;
   }
-  const kind = state.origVgm ? 'vgm' : state.song && state.song.events ? 'midi' : null;
+  const kind = state.origSpc ? 'spc' : state.origVgm ? 'vgm' : state.song && state.song.events ? 'midi' : null;
   if (!kind) return;
   if (state.playing) { post({ type: 'pause' }); setPlaying(false); }
   for (const k in orig.node) if (k !== kind) orig.node[k].port.postMessage({ type: 'pause' });
@@ -208,7 +213,11 @@ function openOrig() {
   $('origTime').textContent = '0:00 / 0:00'; $('origSeek').value = 0;
   $('origChips').textContent = '読み込み中…';
   const fail = (e) => { $('origInfo').textContent = '元の音源を準備できませんでした (' + (e && e.message || e) + ')'; };
-  if (kind === 'vgm') {
+  if (kind === 'spc') {
+    $('origInfo').textContent = 'SPC エミュレーター (game-music-emu / snes_spc) でページ内再生';
+    const t = state.origSpc.tags, data = state.origSpc.buf.slice(0);
+    ensureOrig('spc').then(() => orig.node.spc.port.postMessage({ type: 'load', id, data, seconds: t.seconds || 180, fadeMs: t.fadeMs || 0, play: true }, [data])).catch(fail);
+  } else if (kind === 'vgm') {
     $('origInfo').textContent = 'libvgm (chiptune.app と同じエミュレーター) でページ内再生';
     const data = state.origVgm.slice(0);
     ensureOrig('vgm').then(() => orig.node.vgm.port.postMessage({ type: 'load', id, data, play: true }, [data])).catch(fail);
@@ -259,6 +268,33 @@ function enableOrigVgm(raw) {
 }
 $('origBtn').onclick = () => ($('origPanel').hidden ? openOrig() : closeOrig());
 $('origClose').onclick = closeOrig;
+
+// ---------- SPC (スーパーファミコン) ----------
+// SPC エミュレーターを動かして 8 チャンネルの音程・音量・発音を読み取り、選んだ音源で鳴らし直す
+async function loadSPC(buf, name, sub) {
+  const tags = spcTags(buf);
+  $('songTitle').textContent = tags.title || name.replace(/\.spc$/i, '');
+  $('songSub').textContent = 'スーパーファミコンの曲を読み取り中…';
+  let src;
+  try {
+    const M = await loadSpcCore('js/vendor/snesspc.js?v=' + APP_VERSION);
+    await new Promise((r) => setTimeout(r, 30)); // 表示を更新してから重い処理
+    src = spcToReg(M, buf);
+  } catch (e) { $('songSub').textContent = '読み込めませんでした: ' + e.message; return false; }
+  state.song = { reg: src, duration: src.duration };
+  state.origSpc = { buf, tags };
+  setOrigBtn(true, '元のスーパーファミコンの音でページ内再生します (SPC エミュレーター)');
+  state.mutes.fill(false); state.tones.fill(null);
+  $('songSub').textContent = [tags.game, tags.artist, sub, '元の音源: スーパーファミコン (SPC700 / S-DSP)'].filter(Boolean).join(' ・ ');
+  for (const id of ['playBtn', 'stopBtn', 'seek', 'exportBtn']) $(id).disabled = false;
+  updateVgmBtn();
+  renderParts();
+  try { await ensureAudio(); } catch { return false; }
+  post({ type: 'mutes', value: state.mutes });
+  post({ type: 'tones', value: state.tones });
+  post(loadMsg());
+  post({ type: 'play' }); setPlaying(true);
+}
 
 // ---------- VGM (アーケード基板などの音源チップ命令の記録) ----------
 async function loadVGM(buf, name, sub) {
@@ -341,7 +377,7 @@ async function loadRemote(path, songId = null) {
 // ---------- chiptune.app ブラウザ ----------
 // chiptune.app の API は localhost 以外 (GitHub Pages など) からは使えないため、
 // その場合は同梱の曲リスト (catalog/) に切り替える。曲ファイル本体は gifx.co から直接読める。
-let useCatalog = LOCAL ? null : true; // 公開ページは最初から同梱リストを使う
+let useCatalog = null; // まず chiptune.app の一覧 (公開ページは中継経由)、使えなければ同梱リスト
 const catalog = { index: null, tops: {} };
 async function apiFetch(url) {
   if (useCatalog !== true) {
@@ -400,7 +436,7 @@ async function browse(path) {
     ul.innerHTML = '';
     if (useCatalog && path === '/') { const n = document.createElement('li'); n.className = 'msg'; n.textContent = catalogNote(); ul.append(n); }
     // ルートでは MIDI を含むフォルダを先頭に
-    if (path === '/') items.sort((a, b) => (/midi|project ay|vgm rips/i.test(b.path) - /midi|project ay|vgm rips/i.test(a.path)));
+    if (path === '/') items.sort((a, b) => (/midi|project ay|vgm rips|nintendo snes/i.test(b.path) - /midi|project ay|vgm rips|nintendo snes/i.test(a.path)));
     const queue = items.filter((it) => it.type !== 'directory' && isMidi(it.path)).map((it) => ({ file: it.path, songId: it.songId || null }));
     for (const it of items) {
       const name = it.path.split('/').pop();

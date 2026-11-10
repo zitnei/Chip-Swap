@@ -12,6 +12,23 @@ VGM をページ内で元の音源チップのまま再生するため、次の 
 | **libvgm-wrapper.cpp** (JavaScript から libvgm を呼ぶ部分) | Matt Montag (Chip Player JS / chiptune.app) | GPL-3.0 | https://github.com/mmontag/chip-player-js (commit `9455a8bc8bfe83eeacc54874d76ef74c8f77961c`) の `src/bindings/libvgm-wrapper.cpp`。このフォルダにも同梱 (`chip-player-js/libvgm-wrapper.cpp`、変更なし) |
 | zlib (Emscripten 同梱) | Jean-loup Gailly, Mark Adler | zlib License | https://zlib.net/ |
 
+## スーパーファミコン (SPC) のエンジン (`js/vendor/snesspc.js`)
+
+SPC を元の音で鳴らす・別の音源用に音程を読み取るため、game-music-emu の SPC 部分 (blargg の snes_spc) を Emscripten でビルドして使っています。
+
+| ソフトウェア | 作者 | ライセンス | ソース |
+|---|---|---|---|
+| **game-music-emu の SPC 部分** (`game-music-emu-spc/`) | Shay Green (blargg) ほか | LGPL-2.1 (`game-music-emu-spc/LICENSE-LGPL-2.1.txt`) | https://github.com/mmontag/chip-player-js の `game-music-emu/gme/` (commit `9455a8bc8bfe83eeacc54874d76ef74c8f77961c`)。**変更点**: `Spc_Dsp.h` の `Spc_Dsp::write` に、KON (キーオン) レジスタへの書き込みを `g_spc_kon_written` に記録する 1 行を追加 |
+| **spc-wrapper.cpp** (JavaScript から呼ぶ部分) | Chip Swap | GPL-3.0 | このフォルダの `spc-wrapper.cpp` |
+
+### ビルド手順 (`js/vendor/snesspc.js` を作り直す時)
+
+```bash
+em++ third_party/spc-wrapper.cpp third_party/game-music-emu-spc/Snes_Spc.cpp third_party/game-music-emu-spc/Spc_Cpu.cpp   third_party/game-music-emu-spc/Spc_Dsp.cpp third_party/game-music-emu-spc/Spc_Filter.cpp   third_party/game-music-emu-spc/blargg_common.cpp third_party/game-music-emu-spc/blargg_errors.cpp   -I third_party/game-music-emu-spc -Oz -DNDEBUG -sMODULARIZE=1 -sEXPORT_NAME=SnesSpc -sENVIRONMENT=web,worklet   -sSINGLE_FILE=1 -sWASM_ASYNC_COMPILATION=0 -sALLOW_MEMORY_GROWTH=1 -sMALLOC=emmalloc -sASSERTIONS=0 -sSTACK_OVERFLOW_CHECK=0   -sEXPORTED_FUNCTIONS='["_sp_load","_sp_play","_sp_skip","_sp_dsp","_sp_ram","_sp_kon","_malloc","_free"]'   -sEXPORTED_RUNTIME_METHODS='["HEAPU8","HEAP16"]' -o js/vendor/snesspc.js
+
+node tools/build-worklet.mjs   # js/original-spc-worklet.bundle.js を作り直す
+```
+
 ## 「元の音源で聴く」(MIDI) の再生エンジン (`js/vendor/fluidlite.js`)
 
 MIDI を chiptune.app と同じ音で鳴らすため、FluidLite (SoundFont シンセサイザー) を Emscripten でビルドして使っています。

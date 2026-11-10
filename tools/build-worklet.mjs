@@ -44,3 +44,12 @@ const midi = '// 自動生成ファイル: tools/build-worklet.mjs で作成。�
   + fl + '\n' + flProc;
 fs.writeFileSync(path.join(root, 'original-midi-worklet.bundle.js'), midi);
 console.log('js/original-midi-worklet.bundle.js', (midi.length / 1024).toFixed(1) + ' KB');
+
+// 「元の音源で聴く」(スーパーファミコン SPC) 用: game-music-emu の snes_spc (LGPL-2.1) + 再生処理
+const sp = fs.readFileSync(path.join(root, 'vendor', 'snesspc.js'), 'utf8');
+const spProc = fs.readFileSync(path.join(root, 'original-spc-worklet.js'), 'utf8');
+const spc = '// 自動生成ファイル: tools/build-worklet.mjs で作成。直接編集しないでください。\n'
+  + '// game-music-emu (blargg の snes_spc、LGPL-2.1) + third_party/spc-wrapper.cpp を Emscripten でビルドしたもの。\n'
+  + sp + '\n' + spProc;
+fs.writeFileSync(path.join(root, 'original-spc-worklet.bundle.js'), spc);
+console.log('js/original-spc-worklet.bundle.js', (spc.length / 1024).toFixed(1) + ' KB');
