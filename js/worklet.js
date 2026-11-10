@@ -1,20 +1,21 @@
 import { Player } from './engine.js';
 import { ZXPlayer } from './zx.js';
+import { RegPlayer } from './regplay.js';
 
 // 再生する曲の種類 (MIDI / ZX) に応じてプレイヤーを差し替える
 class ChipProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.cfg = { chip: 'ym2612', scale: 1, mutes: new Array(16).fill(false), tones: new Array(16).fill(null), loop: false };
-    this.player = this.make(false);
+    this.cfg = { chip: 'ym2612', scale: 1, mutes: new Array(64).fill(false), tones: new Array(64).fill(null), loop: false };
+    this.player = this.make('midi');
     this.tick = 0;
     this.port.onmessage = (ev) => {
       const m = ev.data, cfg = this.cfg;
       let p = this.player;
       switch (m.type) {
         case 'load':
-          p = this.player = this.make(!!m.zx);
-          if (m.zx) p.load(m.zx.frames, m.zx.count, m.zx.clock); else p.load(m.events, m.duration);
+          p = this.player = this.make(m.zx ? 'zx' : m.reg ? 'reg' : 'midi');
+          if (m.zx) p.load(m.zx.frames, m.zx.count, m.zx.clock); else if (m.reg) p.load(m.reg); else p.load(m.events, m.duration);
           p.playing = false;
           break;
         case 'play': if (p.ended) p.seek(0); p.playing = true; break;
@@ -27,8 +28,8 @@ class ChipProcessor extends AudioWorkletProcessor {
       }
     };
   }
-  make(zx) {
-    const p = zx ? new ZXPlayer(sampleRate) : new Player(sampleRate);
+  make(type) {
+    const p = type === 'zx' ? new ZXPlayer(sampleRate) : type === 'reg' ? new RegPlayer(sampleRate) : new Player(sampleRate);
     const c = this.cfg;
     p.setChip(c.chip, c.scale); p.engine.setMutes(c.mutes); p.engine.setTones(c.tones); p.loop = c.loop;
     return p;

@@ -73,6 +73,7 @@ input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
 
 .now .title { font-size: 20px; font-weight: 700; word-break: break-all; }
 .sub { color: var(--dim); font-size: 13px; }
+.orig { display: inline-block; margin-top: 2px; color: var(--accent); }
 .transport { display: flex; align-items: center; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
 .transport #seek { flex: 1; min-width: 120px; }
 .time { min-width: 110px; text-align: center; font-variant-numeric: tabular-nums; }

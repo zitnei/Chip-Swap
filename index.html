@@ -28,13 +28,13 @@
       </form>
       <div id="crumbs" class="crumbs"></div>
       <ul id="list" class="list"></ul>
-      <p class="hint">MIDI (.mid) と ZX チューン (.ay ・「Project AY」フォルダ) を選べます。VGM・NSF などは対象外です。</p>
+      <p class="hint">MIDI (.mid)・ZX チューン (.ay)・VGM (.vgm/.vgz) を選べます。VGM は FM 音源・PSG を使った曲が対象で、PCM だけで鳴らす基板は非対応です。</p>
     </div>
 
     <div class="tabpane hidden" id="tab-local">
       <label id="drop" class="drop">
-        <input id="fileInput" type="file" accept=".mid,.midi,.kar,.rmi,.ay" hidden>
-        ここに .mid / .ay ファイルをドロップ<br>またはクリックして選択
+        <input id="fileInput" type="file" accept=".mid,.midi,.kar,.rmi,.ay,.vgm,.vgz" hidden>
+        ここに .mid / .ay / .vgz ファイルをドロップ<br>またはクリックして選択
       </label>
       <form id="urlForm" class="row">
         <input id="urlInput" type="url" placeholder="MIDI ファイルの URL">
@@ -47,7 +47,8 @@
   <section class="panel player">
     <div class="now">
       <div id="songTitle" class="title">曲が選ばれていません</div>
-      <div id="songSub" class="sub">左のリストから MIDI か ZX チューンを選んでください</div>
+      <div id="songSub" class="sub">左のリストから曲を選んでください</div>
+      <a id="origLink" class="sub orig" target="_blank" rel="noopener" hidden>元の音を chiptune.app で聴く ↗</a>
       <label id="subRow" class="sub" hidden>曲: <select id="subSel"></select></label>
     </div>
     <div class="transport">

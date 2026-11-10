@@ -2,6 +2,7 @@ import { parseMidi, GM_NAMES } from './midi.js';
 import { CHIPS, TONES } from './chips.js';
 import { VGM_SUPPORTED } from './vgm.js';
 import { isAY, parseAY, runAY } from './ay.js';
+import { isVGM, unpackVGM, parseVGM } from './vgmin.js';
 
 const API = 'https://chiptune.app/api';
 const FILES = 'https://gifx.co/music/';
@@ -9,11 +10,11 @@ const $ = (id) => document.getElementById(id);
 const NOTE = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const noteName = (n) => NOTE[n % 12] + (Math.floor(n / 12) - 1);
 const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-const isMidi = (p) => /\.(mid|midi|kar|rmi|ay)$/i.test(p);
+const isMidi = (p) => /\.(mid|midi|kar|rmi|ay|vgm|vgz)$/i.test(p);
 const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
 
 const state = {
-  song: null, chip: 'ym2612', scale: 1, mutes: new Array(16).fill(false), tones: new Array(16).fill(null),
+  song: null, chip: 'ym2612', scale: 1, mutes: new Array(64).fill(false), tones: new Array(64).fill(null),
   playing: false, time: 0, path: '/', curFile: null,
 };
 
@@ -50,12 +51,14 @@ function setPlaying(p) {
   $('playBtn').textContent = p ? '❚❚ 一時停止' : '▶ 再生';
 }
 
-const loadMsg = () => state.song.zx ? { type: 'load', zx: state.song.zx } : { type: 'load', events: state.song.events, duration: state.song.duration };
+const loadMsg = () => state.song.zx ? { type: 'load', zx: state.song.zx } : state.song.reg ? { type: 'load', reg: state.song.reg } : { type: 'load', events: state.song.events, duration: state.song.duration };
 
 // ---------- 曲の読み込み ----------
-async function loadSong(buf, name, sub, path = '') {
+async function loadSong(buf, name, sub, path = '', songId = null) {
+  setOrigLink(songId);
   if (isAY(buf)) return loadZX(buf, name, sub, /\/CPC\//i.test(path));
   $('subRow').hidden = true;
+  if (isVGM(buf)) return loadVGM(buf, name, sub);
   let song;
   try { song = parseMidi(buf); } catch (e) { alert('読み込めませんでした: ' + e.message); return; }
   if (!song.events.some((e) => e.type === 'on')) { alert('ノートが入っていない MIDI です'); return; }
@@ -70,6 +73,39 @@ async function loadSong(buf, name, sub, path = '') {
   post({ type: 'mutes', value: state.mutes });
   post({ type: 'tones', value: state.tones });
   post({ type: 'load', events: song.events, duration: song.duration });
+  post({ type: 'play' }); setPlaying(true);
+}
+
+function setOrigLink(songId) {
+  const a = $('origLink');
+  a.hidden = !songId;
+  if (songId) a.href = 'https://chiptune.app/?play=' + encodeURIComponent(songId);
+}
+
+// ---------- VGM (アーケード基板などの音源チップ命令の記録) ----------
+async function loadVGM(buf, name, sub) {
+  let src;
+  try { src = parseVGM(await unpackVGM(buf)); } catch (e) { $('songSub').textContent = '読み込めませんでした: ' + e.message; return; }
+  const nv = src.voices.length;
+  let active = 0;
+  for (let i = 0; i < src.count * nv; i++) if (src.data[i * 3 + 2] & 1) { active++; break; }
+  if (!active && !src.hits.length) {
+    $('songTitle').textContent = name;
+    $('songSub').textContent = `この曲は音程を読み取れる音源を使っていません (${[...src.chips, ...src.unsupported].join(' / ') || '不明'})。PCM だけで鳴らす基板は非対応です`;
+    return;
+  }
+  state.song = { reg: src, duration: src.duration };
+  state.mutes.fill(false); state.tones.fill(null);
+  $('songTitle').textContent = name.replace(/\.vg[mz]$/i, '');
+  const chipsTxt = '元の音源: ' + src.chips.join(' + ') + (src.unsupported.length ? ` (${src.unsupported.join('・')} は鳴らせません)` : '');
+  $('songSub').textContent = [sub, chipsTxt].filter(Boolean).join(' ・ ');
+  for (const id of ['playBtn', 'stopBtn', 'seek', 'exportBtn']) $(id).disabled = false;
+  updateVgmBtn();
+  renderParts();
+  await ensureAudio();
+  post({ type: 'mutes', value: state.mutes });
+  post({ type: 'tones', value: state.tones });
+  post(loadMsg());
   post({ type: 'play' }); setPlaying(true);
 }
 
@@ -109,7 +145,7 @@ async function playZXSong(i) {
 }
 $('subSel').onchange = (e) => playZXSong(+e.target.value);
 
-async function loadRemote(path) {
+async function loadRemote(path, songId = null) {
   $('songSub').textContent = '読み込み中…';
   try {
     const r = await fetch(FILES + enc(path));
@@ -117,26 +153,75 @@ async function loadRemote(path) {
     state.curFile = path;
     markCurrent();
     const parts = path.split('/');
-    await loadSong(await r.arrayBuffer(), parts.pop(), parts.join(' / '), path);
+    await loadSong(await r.arrayBuffer(), parts.pop(), parts.join(' / '), path, songId);
   } catch (e) { $('songSub').textContent = 'ダウンロード失敗: ' + e.message; }
 }
 
 // ---------- chiptune.app ブラウザ ----------
+// chiptune.app の API は localhost 以外 (GitHub Pages など) からは使えないため、
+// その場合は同梱の曲リスト (catalog/) に切り替える。曲ファイル本体は gifx.co から直接読める。
+let useCatalog = null;
+const catalog = { index: null, tops: {} };
+async function apiFetch(url) {
+  if (useCatalog !== true) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      useCatalog = false;
+      return j;
+    } catch (e) { if (useCatalog === false) throw e; useCatalog = true; }
+  }
+  return null;
+}
+const catIndex = async () => (catalog.index ??= await fetch('catalog/index.json').then((r) => r.json()));
+async function catTop(name) {
+  if (catalog.tops[name]) return catalog.tops[name];
+  const t = (await catIndex()).tops.find((x) => x.name === name);
+  if (!t) return {};
+  return (catalog.tops[name] = await fetch('catalog/' + t.file).then((r) => r.json()));
+}
+async function catalogBrowse(path) {
+  const idx = await catIndex();
+  if (path === '/') return idx.tops.map((t) => ({ path: t.name, type: 'directory', count: t.files }));
+  const dirs = await catTop(path.split('/')[1]);
+  const base = path.slice(1);
+  return (dirs[path] || []).map((e) => (typeof e[1] === 'number' ? { path: base + '/' + e[0], type: 'directory', count: e[1] } : { path: base + '/' + e[0], type: 'file', songId: e[1] || null }));
+}
+async function catalogSearch(q) {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const res = [];
+  for (const t of (await catIndex()).tops) {
+    const dirs = await catTop(t.name);
+    for (const [p, list] of Object.entries(dirs)) {
+      const lp = p.toLowerCase();
+      for (const e of list) {
+        if (typeof e[1] === 'number') continue;
+        const full = lp + '/' + e[0].toLowerCase();
+        if (words.every((w) => full.includes(w))) { res.push({ file: p.slice(1) + '/' + e[0], song_id: e[1] || null }); if (res.length >= 500) return res; }
+      }
+    }
+  }
+  return res;
+}
+const catalogNote = () => (useCatalog && catalog.index ? `(収録リスト: ${catalog.index.updated} 時点)` : '');
+
 async function browse(path) {
   state.path = path;
   renderCrumbs();
   const ul = $('list');
   ul.innerHTML = '<li class="msg">読み込み中…</li>';
   try {
-    const items = await fetch(`${API}/browse?path=${encodeURIComponent(path)}`).then((r) => r.json());
+    const items = (await apiFetch(`${API}/browse?path=${encodeURIComponent(path)}`)) || (await catalogBrowse(path));
     ul.innerHTML = '';
+    if (useCatalog && path === '/') { const n = document.createElement('li'); n.className = 'msg'; n.textContent = catalogNote(); ul.append(n); }
     if (path !== '/') addItem('📁 ..', () => browse(path.replace(/\/[^/]+$/, '') || '/'));
     // ルートでは MIDI を含むフォルダを先頭に
-    if (path === '/') items.sort((a, b) => (/midi|project ay/i.test(b.path) - /midi|project ay/i.test(a.path)));
+    if (path === '/') items.sort((a, b) => (/midi|project ay|vgm rips/i.test(b.path) - /midi|project ay|vgm rips/i.test(a.path)));
     for (const it of items) {
       const name = it.path.split('/').pop();
       if (it.type === 'directory') addItem('📁 ' + name, () => browse('/' + it.path), it.count + '曲');
-      else addItem('♪ ' + name, isMidi(name) ? () => loadRemote(it.path) : null, null, it.path);
+      else addItem('♪ ' + name, isMidi(name) ? () => loadRemote(it.path, it.songId) : null, null, it.path);
     }
     markCurrent();
   } catch (e) { msg(`取得できませんでした (${e.message})`); }
@@ -171,14 +256,16 @@ $('searchForm').onsubmit = async (e) => {
   const ul = $('list'); ul.innerHTML = '<li class="msg">検索中…</li>';
   $('crumbs').textContent = `検索: "${q}" (MIDI・ZX のみ)`;
   try {
-    const res = await fetch(`${API}/search?query=${encodeURIComponent(q)}&limit=500`).then((r) => r.json());
-    const items = res.items.filter((it) => isMidi(it.file));
+    if (useCatalog) $('crumbs').textContent += ' ・ 曲リストを読み込み中…';
+    const res = await apiFetch(`${API}/search?query=${encodeURIComponent(q)}&limit=500`);
+    const items = (res ? res.items : await catalogSearch(q)).filter((it) => isMidi(it.file));
+    $('crumbs').textContent = `検索: "${q}" (MIDI・ZX のみ) ${catalogNote()}`;
     ul.innerHTML = '';
     addItem('📁 フォルダ表示に戻る', () => browse(state.path));
     if (!items.length) addItem('見つかりませんでした', null);
     for (const it of items) {
       const parts = it.file.split('/');
-      addItem('♪ ' + parts.slice(-2).join(' / '), () => loadRemote(it.file), null, it.file);
+      addItem('♪ ' + parts.slice(-2).join(' / '), () => loadRemote(it.file, it.song_id), null, it.file);
     }
     markCurrent();
   } catch (err) { msg(`検索できませんでした (${err.message})`); }
@@ -259,6 +346,28 @@ function selectChip(id) {
 // ---------- MIDI パート (ZX は AY のチャンネル) ----------
 function renderParts() {
   const tb = $('parts'); tb.innerHTML = '';
+  if (state.song.reg) {
+    const src = state.song.reg, nv = src.voices.length;
+    const used = src.voices.map((_, v) => { for (let f = 0; f < src.count; f++) if (src.data[(f * nv + v) * 3 + 2] & 1) return true; return false; });
+    const rows = src.voices.map((vo, v) => ({ v, label: vo.name, kind: vo.kind })).filter((r) => used[r.v]);
+    if (src.hits.length) rows.push({ v: nv, label: 'ドラム (リズム音源・PCM)', kind: 'drum' });
+    rows.forEach(({ v, label, kind }) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td></td><td class="inst"></td><td></td><td><input type="checkbox"></td>';
+      tr.children[0].textContent = kind === 'fm' ? 'FM' : kind === 'drum' ? 'DR' : kind === 'noise' ? 'N' : 'PSG';
+      tr.children[1].textContent = label; tr.children[1].title = label;
+      if (kind === 'fm' || kind === 'psg') {
+        const sel = document.createElement('select');
+        sel.innerHTML = '<option value="">自動</option>' + Object.entries(TONES).map(([k, t]) => `<option value="${k}">${t.label}</option>`).join('');
+        sel.onchange = () => { state.tones[v] = sel.value || null; post({ type: 'tones', value: state.tones }); };
+        tr.children[2].append(sel);
+      } else tr.children[2].textContent = '—';
+      const mute = tr.querySelector('input');
+      mute.onchange = () => { state.mutes[v] = mute.checked; tr.classList.toggle('muted', mute.checked); post({ type: 'mutes', value: state.mutes }); };
+      tb.append(tr);
+    });
+    return;
+  }
   if (state.song.zx) {
     ['AY チャンネル A', 'AY チャンネル B', 'AY チャンネル C', 'ノイズ'].forEach((label, ch) => {
       const tr = document.createElement('tr');
@@ -368,7 +477,7 @@ function runExport(format) {
   w.postMessage({ format, ...exportSource(), chip: state.chip, scale: state.scale, mutes: state.mutes, tones: state.tones, sr: 44100,
     title: $('songTitle').textContent, game: state.curFile ? state.curFile.split('/').slice(-2, -1)[0] : '', system: `${chip.maker} ${chip.name}` });
 }
-function exportSource() { return state.song.zx ? { zx: state.song.zx, duration: state.song.duration } : { events: state.song.events, duration: state.song.duration }; }
+function exportSource() { return state.song.zx ? { zx: state.song.zx, duration: state.song.duration } : state.song.reg ? { reg: state.song.reg, duration: state.song.duration } : { events: state.song.events, duration: state.song.duration }; }
 $('exportBtn').onclick = () => runExport('wav');
 $('vgmBtn').onclick = () => runExport('vgm');
 function updateVgmBtn() {

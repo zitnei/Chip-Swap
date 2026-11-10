@@ -1,6 +1,7 @@
 // WAV / VGM 書き出し (別スレッドでオフラインレンダリング)
 import { Player } from './engine.js';
 import { ZXPlayer } from './zx.js';
+import { RegPlayer } from './regplay.js';
 import { buildVGM } from './vgm.js';
 
 onmessage = (ev) => {
@@ -12,12 +13,12 @@ onmessage = (ev) => {
   } catch (e) { postMessage({ type: 'error', message: e.message }); }
 };
 
-function renderWav({ events, duration, zx, chip, scale, mutes, tones, sr }) {
-  const p = zx ? new ZXPlayer(sr) : new Player(sr);
+function renderWav({ events, duration, zx, reg, chip, scale, mutes, tones, sr }) {
+  const p = zx ? new ZXPlayer(sr) : reg ? new RegPlayer(sr) : new Player(sr);
   p.setChip(chip, scale);
   p.engine.setMutes(mutes);
   p.engine.setTones(tones);
-  if (zx) { p.load(zx.frames, zx.count, zx.clock); duration = p.duration; } else p.load(events, duration);
+  if (zx) { p.load(zx.frames, zx.count, zx.clock); duration = p.duration; } else if (reg) { p.load(reg); duration = p.duration; } else p.load(events, duration);
   p.playing = true;
   const total = Math.ceil((duration + 2) * sr);
   const pcm = new Int16Array(total * 2);

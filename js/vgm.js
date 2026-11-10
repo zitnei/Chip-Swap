@@ -3,6 +3,7 @@
 import { Player, drumRaw, DRUM_CLASSES } from './engine.js';
 import { TONES } from './chips.js';
 import { ZXPlayer } from './zx.js';
+import { RegPlayer } from './regplay.js';
 
 const SR = 44100;
 const FRAME = 735; // 44100 / 60
@@ -510,19 +511,19 @@ function gd3(title, game, system) {
   return o.b;
 }
 
-export function buildVGM({ events, duration, zx, chip, mutes, tones, title, game, system }) {
-  const p = zx ? new ZXPlayer(SR) : new Player(SR);
+export function buildVGM({ events, duration, zx, reg, chip, mutes, tones, title, game, system }) {
+  const p = zx ? new ZXPlayer(SR) : reg ? new RegPlayer(SR) : new Player(SR);
   const eng = p.engine;
-  if (zx) p.setChip(chip, 1); else eng.setChip(chip, 1);
+  p.setChip(chip, 1);
   eng.setMutes(mutes); eng.setTones(tones);
-  if (zx) p.load(zx.frames, zx.count, zx.clock); else p.load(events, duration);
+  if (zx) p.load(zx.frames, zx.count, zx.clock); else if (reg) p.load(reg); else p.load(events, duration);
   p.playing = true;
   const frameLen = zx ? SR / 50 : FRAME;
 
   const o = new Out();
   const H = {};
   const writers = zx && chip === 'zx128' ? [zxRawWriter(o, p, mutes, H, zx.clock)] : setupChip(chip, o, eng, H);
-  const total = zx ? zx.count + 25 : Math.ceil((duration + 2) * SR / FRAME);
+  const total = zx ? zx.count + 25 : reg ? reg.count + 60 : Math.ceil((duration + 2) * SR / FRAME);
   const L = new Float32Array(frameLen), R = new Float32Array(frameLen);
   for (let f = 0; f < total; f++) {
     p.process(L, R, frameLen); // エンジンを1フレーム進める (音声は使わない)
