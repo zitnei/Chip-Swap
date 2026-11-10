@@ -6,7 +6,7 @@
 <title>Chip Swap</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261110e">
+<link rel="stylesheet" href="style.css?v=20261110f">
 </head>
 <body>
 <header>
@@ -30,7 +30,10 @@
         <div id="gameCount" class="crumbs"></div>
       </div>
       <div id="gameHead" class="game-head" hidden>
-        <a id="gameBack" class="back">◀ ゲーム一覧</a>
+        <div class="nav-row">
+          <button id="gameBack" class="ghost">▲ 1つ上へ (ゲーム一覧)</button>
+          <button id="gameFolder" class="ghost" title="このゲームが入っているフォルダを「フォルダ」タブで開きます">📁 フォルダで見る</button>
+        </div>
         <div id="gameTitle" class="game-title"></div>
         <div id="gameSys" class="sub"></div>
         <button id="gamePlayAll">▶ 1曲目から連続再生</button>
@@ -44,6 +47,7 @@
         <input id="searchInput" type="search" placeholder="曲名・ゲーム名で検索 (例: zelda, gradius)">
         <button type="submit">検索</button>
       </form>
+      <div class="nav-row up-row"><button id="upBtn" class="ghost" hidden>▲ 1つ上のフォルダへ</button></div>
       <div id="crumbs" class="crumbs"></div>
       <ul id="list" class="list"></ul>
       <p class="hint">MIDI (.mid)・ZX チューン (.ay)・VGM (.vgm/.vgz) を選べます。VGM は FM 音源・PSG を使った曲が対象で、PCM だけで鳴らす基板は非対応です。</p>
@@ -130,6 +134,6 @@
 </main>
 
 <footer>曲データ: <a href="https://chiptune.app/" target="_blank" rel="noopener">chiptune.app (Chip Player JS)</a> ・ 音源はブラウザ内で合成した近似エミュレーションです</footer>
-<script type="module" src="js/app.js?v=20261110e"></script>
+<script type="module" src="js/app.js?v=20261110f"></script>
 </body>
 </html>

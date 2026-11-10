@@ -6,7 +6,7 @@ import { isVGM, unpackVGM, parseVGM } from './vgmin.js';
 
 // chiptune.app の API と曲ファイルは chiptune.app と localhost からしか読めない。
 // それ以外 (GitHub Pages の公開ページ) では Cloudflare Workers の中継 (proxy/worker.js) を通す。
-const APP_VERSION = '20261110e'; // 更新したら index.html の ?v= と一緒に変える
+const APP_VERSION = '20261110f'; // 更新したら index.html の ?v= と一緒に変える
 const PROXY = 'https://chip-swap-proxy.zitnei.workers.dev';
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const API = 'https://chiptune.app/api';
@@ -275,7 +275,10 @@ async function catalogSearch(q) {
 }
 const catalogNote = () => (useCatalog && catalog.index ? `(収録リスト: ${catalog.index.updated} 時点)` : '');
 
+const parentOf = (p) => p.replace(/\/[^/]+$/, '') || '/';
 async function browse(path) {
+  $('upBtn').hidden = path === '/';
+  $('upBtn').onclick = () => browse(parentOf(path));
   state.path = path;
   renderCrumbs();
   const ul = $('list');
@@ -284,7 +287,6 @@ async function browse(path) {
     const items = (await apiFetch(`${API}/browse?path=${encodeURIComponent(path)}`)) || (await catalogBrowse(path));
     ul.innerHTML = '';
     if (useCatalog && path === '/') { const n = document.createElement('li'); n.className = 'msg'; n.textContent = catalogNote(); ul.append(n); }
-    if (path !== '/') addItem('📁 ..', () => browse(path.replace(/\/[^/]+$/, '') || '/'));
     // ルートでは MIDI を含むフォルダを先頭に
     if (path === '/') items.sort((a, b) => (/midi|project ay|vgm rips/i.test(b.path) - /midi|project ay|vgm rips/i.test(a.path)));
     const queue = items.filter((it) => it.type !== 'directory' && isMidi(it.path)).map((it) => ({ file: it.path, songId: it.songId || null }));
@@ -324,6 +326,7 @@ $('searchForm').onsubmit = async (e) => {
   const q = $('searchInput').value.trim();
   if (!q) return browse(state.path);
   const ul = $('list'); ul.innerHTML = '<li class="msg">検索中…</li>';
+  $('upBtn').hidden = false; $('upBtn').onclick = () => browse(state.path);
   $('crumbs').textContent = `検索: "${q}" (MIDI・ZX のみ)`;
   try {
     if (useCatalog) $('crumbs').textContent += ' ・ 曲リストを読み込み中…';
@@ -475,7 +478,8 @@ function renderScopes(gs) {
   }
 }
 function gameMsg(text) { const ul = $('gameList'); ul.innerHTML = ''; const li = document.createElement('li'); li.className = 'msg'; li.textContent = text; ul.append(li); }
-async function showGames() {
+let lastGame = null, gameListScroll = 0;
+async function showGames(restore = false) {
   $('gameHead').hidden = true; $('gameIndex').hidden = false;
   let gs;
   try { gs = await loadGames(); } catch (e) { return gameMsg('ゲーム一覧を読み込めませんでした (' + e.message + ')'); }
@@ -498,9 +502,11 @@ async function showGames() {
     if (g.label) { const sy = document.createElement('span'); sy.className = 'sys'; sy.textContent = g.label; li.append(sy); }
     const n = document.createElement('span'); n.className = 'n'; n.textContent = g.count + '曲'; li.append(n);
     li.title = g.path.slice(1); li.onclick = () => showGame(g);
+    if (restore && g === lastGame) li.classList.add('last-game');
     ul.append(li);
   }
   if (!shown.length) gameMsg('該当するゲームはありません');
+  ul.scrollTop = restore ? gameListScroll : 0;
   const bar = $('gameLetters'); bar.innerHTML = '';
   for (const L of ['#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ']) {
     const b = document.createElement('button');
@@ -510,6 +516,9 @@ async function showGames() {
   }
 }
 async function showGame(g) {
+  if (!$('gameIndex').hidden) gameListScroll = $('gameList').scrollTop;
+  lastGame = g;
+  $('gameFolder').onclick = () => { selectTab('browse'); browse(parentOf(g.path)); };
   $('gameIndex').hidden = true; $('gameHead').hidden = false;
   $('gameTitle').textContent = g.title;
   $('gameSys').textContent = [g.label, g.count + '曲'].filter(Boolean).join(' ・ ');
@@ -532,7 +541,7 @@ async function openGameByPath(dir) {
   selectTab('games');
   showGame(g);
 }
-$('gameBack').onclick = () => showGames();
+$('gameBack').onclick = () => showGames(true);
 $('gameFilter').oninput = () => showGames();
 
 // ---------- 再生コントロール ----------
