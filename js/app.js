@@ -6,7 +6,7 @@ import { isVGM, unpackVGM, parseVGM } from './vgmin.js';
 
 // chiptune.app の API と曲ファイルは chiptune.app と localhost からしか読めない。
 // それ以外 (GitHub Pages の公開ページ) では Cloudflare Workers の中継 (proxy/worker.js) を通す。
-const APP_VERSION = '20261110i'; // 更新したら index.html の ?v= と一緒に変える
+const APP_VERSION = '20261110j'; // 更新したら index.html の ?v= と一緒に変える
 const PROXY = 'https://chip-swap-proxy.zitnei.workers.dev';
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const API = 'https://chiptune.app/api';
@@ -107,6 +107,7 @@ async function loadSong(buf, name, sub, path = '', songId = null) {
   try { song = parseMidi(buf); } catch (e) { alert('読み込めませんでした: ' + e.message); return; }
   if (!song.events.some((e) => e.type === 'on')) { alert('ノートが入っていない MIDI です'); return; }
   state.song = song;
+  setOrigBtn(true, 'chiptune.app と同じ MIDI 音源 (FluidLite + SoundFont) でページ内再生します');
   state.mutes.fill(false); state.tones.fill(null);
   $('songTitle').textContent = name;
   $('songSub').textContent = (song.title && song.title !== name ? song.title + ' ・ ' : '') + sub;
@@ -121,14 +122,18 @@ async function loadSong(buf, name, sub, path = '', songId = null) {
 }
 
 // ---------- 元の音源で聴く / YouTube で探す ----------
-// VGM: libvgm (chiptune.app と同じエミュレーター) をページ内で動かして、元の基板の音源で再生する。
-// MIDI など VGM 以外: chiptune.app の再生画面をページ内に表示する。
+// すべてページ内で鳴らす (chiptune.app の画面は使わない)。
+//  VGM: libvgm (chiptune.app と同じエミュレーター) で元の基板の音源のまま
+//  MIDI: FluidLite + chiptune.app と同じ SoundFont (曲ごとの指定があればそれ、無ければ GMGSx Plus)
+//  ZX チューン: 元の音源 (ZXスペクトラムの AY-3-8912) に切り替える
+const SF_BASE = LOCAL ? 'https://gifx.co/soundfonts/' : PROXY + '/soundfonts/';
+const META_API = LOCAL ? API + '/metadata' : PROXY + '/api/metadata';
+const DEFAULT_SF = 'gmgsx-plus.sf2';
 function setOrigLink(songId) {
   state.songId = songId || null;
   state.origVgm = null;
   closeOrig();
-  $('origBtn').disabled = !songId;
-  $('origBtn').title = songId ? '元の基板・機種の音源で再生します (chiptune.app の再生画面)' : 'この曲は chiptune.app の曲ではないため、元の音源では聴けません';
+  setOrigBtn(false);
   // YouTube 検索: ゲーム名 + 曲名
   const parts = (state.curFile || '').split('/');
   const game = parts.length > 1 ? splitTitle(parts.at(-2)).title : '';
@@ -137,72 +142,118 @@ function setOrigLink(songId) {
   $('ytBtn').hidden = !q;
   if (q) $('ytBtn').href = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q);
 }
-let origNode = null, origReady = null, origSeq = 0, origDuration = 0, origSeeking = false;
-function ensureOrig() {
-  return (origReady ??= (async () => {
-    await ensureAudio();
-    await ctx.audioWorklet.addModule('js/original-worklet.bundle.js?v=' + APP_VERSION);
-    origNode = new AudioWorkletNode(ctx, 'libvgm-player', { outputChannelCount: [2] });
-    origNode.connect(gain);
-    origNode.port.onmessage = (e) => onOrigStatus(e.data);
-  })().catch((e) => { origReady = null; throw e; }));
+function setOrigBtn(on, title) {
+  $('origBtn').disabled = !on;
+  $('origBtn').title = on ? title : 'この曲は元の音源で聴けません';
 }
-function onOrigStatus(m) {
-  if (m.id !== undefined && m.id !== origSeq) return;
+const ORIG_ENGINES = {
+  vgm: { file: 'js/original-worklet.bundle.js', proc: 'libvgm-player' },
+  midi: { file: 'js/original-midi-worklet.bundle.js', proc: 'fluid-player' },
+};
+const orig = { node: {}, ready: {}, seq: 0, duration: 0, seeking: false, kind: null, sfLoaded: null };
+const origNode = () => orig.node[orig.kind];
+function ensureOrig(kind) {
+  return (orig.ready[kind] ??= (async () => {
+    await ensureAudio();
+    await ctx.audioWorklet.addModule(ORIG_ENGINES[kind].file + '?v=' + APP_VERSION);
+    const n = new AudioWorkletNode(ctx, ORIG_ENGINES[kind].proc, { outputChannelCount: [2] });
+    n.connect(gain);
+    n.port.onmessage = (e) => onOrigStatus(kind, e.data);
+    orig.node[kind] = n;
+  })().catch((e) => { orig.ready[kind] = null; throw e; }));
+}
+// MIDI の SoundFont: chiptune.app の曲情報に指定があればそれ、無ければ既定 (GMGSx Plus)
+async function soundfontFor(path) {
+  if (path) {
+    try {
+      const m = await fetch(META_API + '?path=' + encodeURIComponent(path)).then((r) => r.json());
+      if (m && m.soundfont) return { name: m.soundfont.split('/').pop(), url: FILES + enc(m.soundfont) };
+    } catch {}
+  }
+  return { name: 'GMGSx Plus', url: SF_BASE + DEFAULT_SF };
+}
+function onOrigStatus(kind, m) {
+  if (kind !== orig.kind || (m.id !== undefined && m.id !== orig.seq)) return;
   if (m.type === 'loaded') {
-    origDuration = m.duration;
-    $('origChips').textContent = '元の音源チップ: ' + m.chips.join(' ・ ');
+    orig.duration = m.duration;
+    if (m.chips) $('origChips').textContent = '元の音源チップ: ' + m.chips.join(' ・ ');
+  } else if (m.type === 'soundfont') {
+    $('origChips').textContent = m.ok ? `MIDI 音源: FluidLite + SoundFont「${m.name}」(chiptune.app と同じ)` : '音色データを読み込めませんでした';
   } else if (m.type === 'error') {
     $('origInfo').textContent = '再生できませんでした: ' + m.message;
   } else if (m.type === 'status') {
-    const d = m.duration || origDuration;
+    const d = m.duration || orig.duration;
     $('origTime').textContent = `${fmt(Math.min(m.time, d || m.time))} / ${fmt(d)}`;
-    if (!origSeeking && d) $('origSeek').value = Math.round(m.time / d * 1000);
+    if (!orig.seeking && d) $('origSeek').value = Math.round(m.time / d * 1000);
     $('origPlay').textContent = m.playing ? '❚❚ 一時停止' : '▶ 再生';
   }
 }
 function openOrig() {
-  if (!state.origVgm && !state.songId) return;
+  // ZX チューン: 元の音源は AY-3-8912 なので、その音源に切り替えて鳴らす
+  if (state.song && state.song.zx) {
+    selectChip('zx128');
+    if (!state.playing) { post({ type: 'play' }); setPlaying(true); }
+    return;
+  }
+  const kind = state.origVgm ? 'vgm' : state.song && state.song.events ? 'midi' : null;
+  if (!kind) return;
   if (state.playing) { post({ type: 'pause' }); setPlaying(false); }
+  for (const k in orig.node) if (k !== kind) orig.node[k].port.postMessage({ type: 'pause' });
+  orig.kind = kind;
+  const id = ++orig.seq;
   $('origPanel').hidden = false;
   $('origBtn').textContent = '🔁 変換した音に戻る';
-  const native = !!state.origVgm;
-  $('origPanel').classList.toggle('native', native);
-  $('origNative').hidden = !native;
-  $('origFrame').hidden = native;
-  if (native) {
+  $('origTime').textContent = '0:00 / 0:00'; $('origSeek').value = 0;
+  $('origChips').textContent = '読み込み中…';
+  const fail = (e) => { $('origInfo').textContent = '元の音源を準備できませんでした (' + (e && e.message || e) + ')'; };
+  if (kind === 'vgm') {
     $('origInfo').textContent = 'libvgm (chiptune.app と同じエミュレーター) でページ内再生';
-    $('origChips').textContent = '読み込み中…';
-    $('origTime').textContent = '0:00 / 0:00'; $('origSeek').value = 0;
-    const id = ++origSeq, data = state.origVgm.slice(0);
-    ensureOrig().then(() => origNode.port.postMessage({ type: 'load', id, data, play: true }, [data]))
-      .catch((e) => { $('origInfo').textContent = '元の音源を準備できませんでした (' + (e && e.message || e) + ')'; });
+    const data = state.origVgm.slice(0);
+    ensureOrig('vgm').then(() => orig.node.vgm.port.postMessage({ type: 'load', id, data, play: true }, [data])).catch(fail);
   } else {
-    $('origInfo').textContent = 'chiptune.app の再生画面。始まらない時は ▶ を押してください';
-    $('origFrame').src = 'https://chiptune.app/?play=' + encodeURIComponent(state.songId);
+    $('origInfo').textContent = 'chiptune.app と同じ MIDI 音源 (FluidLite + SoundFont) でページ内再生';
+    const song = state.song, path = state.curFile;
+    ensureOrig('midi').then(async () => {
+      const sf = await soundfontFor(path);
+      if (orig.sfLoaded !== sf.url) {
+        $('origChips').textContent = `音色データ「${sf.name}」を読み込み中… (初回のみ数MB)`;
+        const r = await fetch(sf.url);
+        if (!r.ok) throw new Error('音色データを取得できませんでした (HTTP ' + r.status + ')');
+        const data = await r.arrayBuffer();
+        if (id !== orig.seq) return;
+        orig.node.midi.port.postMessage({ type: 'soundfont', data, name: sf.name }, [data]);
+        orig.sfLoaded = sf.url;
+      } else $('origChips').textContent = `MIDI 音源: FluidLite + SoundFont「${sf.name}」(chiptune.app と同じ)`;
+      if (id !== orig.seq) return;
+      orig.node.midi.port.postMessage({ type: 'load', id, events: song.events, duration: song.duration, play: true });
+    }).catch(fail);
   }
   $('origPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 function closeOrig() {
   if ($('origPanel').hidden) return;
-  if (origNode) origNode.port.postMessage({ type: 'pause' });
-  $('origFrame').src = 'about:blank'; // 元の音を止める
+  for (const k in orig.node) orig.node[k].port.postMessage({ type: 'pause' });
+  orig.seq++; // 読み込み途中のものは捨てる
   $('origPanel').hidden = true;
   $('origBtn').textContent = '🎵 元の音源で聴く';
 }
 $('origPlay').onclick = () => {
-  if (!origNode) return;
+  const n = origNode();
+  if (!n) return;
   const playing = $('origPlay').textContent.startsWith('❚❚');
-  origNode.port.postMessage({ type: playing ? 'pause' : 'play' });
+  n.port.postMessage({ type: playing ? 'pause' : 'play' });
   $('origPlay').textContent = playing ? '▶ 再生' : '❚❚ 一時停止';
 };
-$('origSeek').oninput = () => { origSeeking = true; };
-$('origSeek').onchange = () => { origSeeking = false; if (origNode && origDuration) origNode.port.postMessage({ type: 'seek', time: $('origSeek').value / 1000 * origDuration }); };
+$('origSeek').oninput = () => { orig.seeking = true; };
+$('origSeek').onchange = () => {
+  orig.seeking = false;
+  const n = origNode();
+  if (n && orig.duration) n.port.postMessage({ type: 'seek', time: $('origSeek').value / 1000 * orig.duration });
+};
 // VGM を読み込んだ時: 元の音源ボタンを有効に (chiptune.app に無い曲・PCM だけの基板でも元の音は聴ける)
 function enableOrigVgm(raw) {
   state.origVgm = raw;
-  $('origBtn').disabled = false;
-  $('origBtn').title = '元の基板・機種の音源でページ内再生します (libvgm)';
+  setOrigBtn(true, '元の基板・機種の音源でページ内再生します (libvgm)');
 }
 $('origBtn').onclick = () => ($('origPanel').hidden ? openOrig() : closeOrig());
 $('origClose').onclick = closeOrig;
@@ -259,6 +310,7 @@ async function playZXSong(i) {
   for (let f = 0; f < zx.count && !used; f++) used = (zx.frames[f * 16 + 8] | zx.frames[f * 16 + 9] | zx.frames[f * 16 + 10]) & 31;
   if (!used) { $('songSub').textContent = 'この曲は AY 音源を使っていません (ビーパー曲のため非対応)'; return; }
   state.song = { zx, duration: zx.count / 50, channels: null };
+  setOrigBtn(true, '元の音源 (ZXスペクトラムの AY-3-8912) に切り替えます');
   state.mutes.fill(false); state.tones.fill(null);
   $('songSub').textContent = [zxFile.ay.author, zxFile.ay.misc, zxFile.cpc ? 'Amstrad CPC' : 'ZX Spectrum', zxFile.sub].filter(Boolean).join(' ・ ');
   for (const id of ['playBtn', 'stopBtn', 'seek', 'exportBtn']) $(id).disabled = false;

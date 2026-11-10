@@ -35,3 +35,12 @@ const orig = '// 自動生成ファイル: tools/build-worklet.mjs で作成。�
   + vendor + '\n' + proc;
 fs.writeFileSync(path.join(root, 'original-worklet.bundle.js'), orig);
 console.log('js/original-worklet.bundle.js', (orig.length / 1024).toFixed(1) + ' KB');
+
+// 「元の音源で聴く」(MIDI) 用: FluidLite (Emscripten でビルドしたもの、LGPL-2.1) + 再生処理
+const fl = fs.readFileSync(path.join(root, 'vendor', 'fluidlite.js'), 'utf8');
+const flProc = fs.readFileSync(path.join(root, 'original-midi-worklet.js'), 'utf8');
+const midi = '// 自動生成ファイル: tools/build-worklet.mjs で作成。直接編集しないでください。\n'
+  + '// FluidLite (Robin Lobel ほか、LGPL-2.1) + third_party/fluid-wrapper.c を Emscripten でビルドしたもの。\n'
+  + fl + '\n' + flProc;
+fs.writeFileSync(path.join(root, 'original-midi-worklet.bundle.js'), midi);
+console.log('js/original-midi-worklet.bundle.js', (midi.length / 1024).toFixed(1) + ' KB');

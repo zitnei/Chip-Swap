@@ -83,10 +83,11 @@ node serve.js
 曲を選んで「🎵 元の音源で聴く」を押すと、元の基板・機種の音源チップのまま再生します。
 
 - VGM: [libvgm](https://github.com/ValleyBell/libvgm) を WebAssembly にビルドしてページ内で再生します (chiptune.app と同じエミュレーター)。QSound などの PCM 音源の基板や、手持ちの .vgz ファイルも聴けます。
-- MIDI: chiptune.app の再生画面をページ内に表示します。
+- MIDI: [FluidLite](https://github.com/divideconcept/FluidLite) と chiptune.app と同じ SoundFont (既定は GMGSx Plus) でページ内で再生します。
+- ZX チューン: 元の音源 (ZXスペクトラムの AY-3-8912) に切り替えます。
 
 ## ライセンス
 
 Chip Swap は **GPL-3.0** で公開しています ([LICENSE](LICENSE))。
 
-「元の音源で聴く」の再生エンジンには、[Chip Player JS](https://github.com/mmontag/chip-player-js) (Matt Montag, GPL-3.0) の libvgm-wrapper と、[libvgm](https://github.com/ValleyBell/libvgm) (Valley Bell ほか) を使っています。詳しい出どころ・ビルド手順は [third_party/README.md](third_party/README.md) を見てください。
+「元の音源で聴く」の再生エンジンには、[Chip Player JS](https://github.com/mmontag/chip-player-js) (Matt Montag, GPL-3.0) の libvgm-wrapper、[libvgm](https://github.com/ValleyBell/libvgm) (Valley Bell ほか)、[FluidLite](https://github.com/divideconcept/FluidLite) (LGPL-2.1) を使っています。詳しい出どころ・ビルド手順は [third_party/README.md](third_party/README.md) を見てください。

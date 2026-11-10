@@ -12,6 +12,29 @@ VGM をページ内で元の音源チップのまま再生するため、次の 
 | **libvgm-wrapper.cpp** (JavaScript から libvgm を呼ぶ部分) | Matt Montag (Chip Player JS / chiptune.app) | GPL-3.0 | https://github.com/mmontag/chip-player-js (commit `9455a8bc8bfe83eeacc54874d76ef74c8f77961c`) の `src/bindings/libvgm-wrapper.cpp`。このフォルダにも同梱 (`chip-player-js/libvgm-wrapper.cpp`、変更なし) |
 | zlib (Emscripten 同梱) | Jean-loup Gailly, Mark Adler | zlib License | https://zlib.net/ |
 
+## 「元の音源で聴く」(MIDI) の再生エンジン (`js/vendor/fluidlite.js`)
+
+MIDI を chiptune.app と同じ音で鳴らすため、FluidLite (SoundFont シンセサイザー) を Emscripten でビルドして使っています。
+設定は Chip Player JS の `src/tinyplayer.c` と同じにしています。音色データ (SoundFont) は同梱せず、chiptune.app と同じ配信元 (gifx.co) から読み込みます (既定は GMGSx Plus)。
+
+| ソフトウェア | 作者 | ライセンス | ソース |
+|---|---|---|---|
+| **FluidLite** | Robin Lobel ほか (FluidSynth 由来) | LGPL-2.1 | https://github.com/mmontag/chip-player-js の `fluidlite/` (commit `9455a8bc8bfe83eeacc54874d76ef74c8f77961c`)、元は https://github.com/divideconcept/FluidLite |
+| **fluid-wrapper.c** (JavaScript から FluidLite を呼ぶ部分) | Chip Swap | GPL-3.0 | このフォルダの `fluid-wrapper.c` |
+
+### ビルド手順 (`js/vendor/fluidlite.js` を作り直す時)
+
+```bash
+cd chip-player-js/fluidlite
+emcmake cmake -S . -B build -G Ninja -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=Release -DDISABLE_SF3=ON -DCMAKE_C_FLAGS="-Oz"
+ninja -C build fluidlite-static
+cd ../..
+
+emcc third_party/fluid-wrapper.c chip-player-js/fluidlite/build/libfluidlite.a   -I chip-player-js/fluidlite/include -I chip-player-js/fluidlite/build -Oz   -sMODULARIZE=1 -sEXPORT_NAME=FluidLite -sENVIRONMENT=web,worklet -sSINGLE_FILE=1 -sWASM_ASYNC_COMPILATION=0   -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=33554432 -sMALLOC=emmalloc -sASSERTIONS=0 -sSTACK_OVERFLOW_CHECK=0 -sFORCE_FILESYSTEM=1   -sEXPORTED_FUNCTIONS='["_fw_init","_fw_load_soundfont","_fw_set_reverb","_fw_note_on","_fw_note_off","_fw_program_change","_fw_pitch_bend","_fw_control_change","_fw_drums_on_ch10","_fw_panic","_fw_reset","_fw_render","_malloc","_free"]'   -sEXPORTED_RUNTIME_METHODS='["HEAPF32","FS","stringToNewUTF8"]'   -o js/vendor/fluidlite.js
+
+node tools/build-worklet.mjs   # js/original-midi-worklet.bundle.js を作り直す
+```
+
 ### ビルド手順 (`js/vendor/libvgm.js` を作り直す時)
 
 [Emscripten](https://emscripten.org/) (確認したのは 7.0.0) と cmake / ninja が必要です。

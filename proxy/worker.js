@@ -4,6 +4,8 @@
 //   GET /api/browse?path=...   → https://chiptune.app/api/browse?path=...
 //   GET /api/search?query=...  → https://chiptune.app/api/search?query=...
 //   GET /music/<path>          → https://gifx.co/music/<path>
+//   GET /api/metadata?path=... → https://chiptune.app/api/metadata?path=...
+//   GET /soundfonts/<name>.sf2 → https://gifx.co/soundfonts/<name>.sf2
 // それ以外の URL・許可していないサイトからの利用は断る (誰でも使える中継にしないため)。
 
 const ALLOWED_ORIGINS = [
@@ -32,8 +34,11 @@ export default {
     if (request.method !== 'GET') return new Response('method not allowed', { status: 405 });
 
     let target;
-    if (url.pathname === '/api/browse' || url.pathname === '/api/search') {
+    if (url.pathname === '/api/browse' || url.pathname === '/api/search' || url.pathname === '/api/metadata') {
       target = 'https://chiptune.app' + url.pathname + url.search;
+    } else if (url.pathname.startsWith('/soundfonts/') && /\.sf2$/i.test(url.pathname)) {
+      // MIDI を「元の音源で聴く」時の SoundFont (chiptune.app と同じもの)
+      target = 'https://gifx.co' + url.pathname;
     } else if (url.pathname.startsWith('/music/')) {
       target = 'https://gifx.co' + url.pathname;
     } else {
@@ -41,7 +46,7 @@ export default {
     }
 
     // 曲ファイルは変わらないので長めにキャッシュ、一覧は短め
-    const isFile = url.pathname.startsWith('/music/');
+    const isFile = url.pathname.startsWith('/music/') || url.pathname.startsWith('/soundfonts/');
     const cache = caches.default;
     const cacheKey = new Request(target);
     let res = await cache.match(cacheKey);
