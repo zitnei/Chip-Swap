@@ -164,7 +164,7 @@ async function loadRemote(path, songId = null) {
 // ---------- chiptune.app ブラウザ ----------
 // chiptune.app の API は localhost 以外 (GitHub Pages など) からは使えないため、
 // その場合は同梱の曲リスト (catalog/) に切り替える。曲ファイル本体は gifx.co から直接読める。
-let useCatalog = null;
+let useCatalog = LOCAL ? null : true; // 公開ページは最初から同梱リストを使う
 const catalog = { index: null, tops: {} };
 async function apiFetch(url) {
   if (useCatalog !== true) {
