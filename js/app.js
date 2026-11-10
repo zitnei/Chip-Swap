@@ -3,10 +3,11 @@ import { CHIPS, TONES } from './chips.js';
 import { VGM_SUPPORTED } from './vgm.js';
 import { isAY, parseAY, runAY } from './ay.js';
 import { isVGM, unpackVGM, parseVGM } from './vgmin.js';
+import { analyzeVGMs, buildToneSet } from './instruments.js';
 
 // chiptune.app の API と曲ファイルは chiptune.app と localhost からしか読めない。
 // それ以外 (GitHub Pages の公開ページ) では Cloudflare Workers の中継 (proxy/worker.js) を通す。
-const APP_VERSION = '20261110k'; // 更新したら index.html の ?v= と一緒に変える
+const APP_VERSION = '20261110l'; // 更新したら index.html の ?v= と一緒に変える
 const PROXY = 'https://chip-swap-proxy.zitnei.workers.dev';
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const API = 'https://chiptune.app/api';
@@ -67,6 +68,7 @@ async function initAudio() {
   post({ type: 'mutes', value: state.mutes });
   post({ type: 'tones', value: state.tones });
   post({ type: 'loop', value: $('loopChk').checked });
+  if (tg.active) post({ type: 'toneset', tones: tg.active.set.tones, map: tg.active.set.map });
   if (state.song) post(loadMsg());
   drawScope();
 }
@@ -698,11 +700,12 @@ document.querySelectorAll('#chipFilter button').forEach((b) => b.onclick = () =>
 function renderChips() {
   const g = $('chipGrid'); g.innerHTML = '';
   for (const c of CHIPS) {
-    if (chipFilter !== 'all' && c.type !== chipFilter) continue;
+    if (chipFilter.startsWith('cat:') ? c.cat !== chipFilter.slice(4) && c.cat !== 'both' : chipFilter !== 'all' && c.type !== chipFilter) continue;
     const b = document.createElement('button');
     b.className = 'chip' + (c.id === state.chip ? ' active' : '');
     b.innerHTML = `<span class="maker"><b class="type"></b> </span><span class="name"></span><span class="sys"></span><span class="desc"></span>`;
     b.querySelector('.maker').append(c.maker);
+    { const ct = document.createElement('span'); ct.className = 'cat'; ct.textContent = c.cat === 'arcade' ? 'アーケード基板' : c.cat === 'console' ? 'ゲーム機' : 'アーケード / ゲーム機'; b.querySelector('.maker').append(ct); }
     b.querySelector('.type').textContent = TYPE_LABEL[c.type];
     b.querySelector('.type').dataset.t = c.type;
     b.querySelector('.name').textContent = c.name;
@@ -735,7 +738,7 @@ function renderParts() {
       tr.children[1].textContent = label; tr.children[1].title = label;
       if (kind === 'fm' || kind === 'psg') {
         const sel = document.createElement('select');
-        sel.innerHTML = '<option value="">自動</option>' + Object.entries(TONES).map(([k, t]) => `<option value="${k}">${t.label}</option>`).join('');
+        sel.innerHTML = toneOptions();
         sel.onchange = () => { state.tones[v] = sel.value || null; post({ type: 'tones', value: state.tones }); };
         tr.children[2].append(sel);
       } else tr.children[2].textContent = '—';
@@ -754,7 +757,7 @@ function renderParts() {
       if (ch < 3) {
         const sel = document.createElement('select');
         sel.title = 'AY 以外の音源で鳴らす時の音色';
-        sel.innerHTML = '<option value="">自動</option>' + Object.entries(TONES).map(([k, t]) => `<option value="${k}">${t.label}</option>`).join('');
+        sel.innerHTML = toneOptions();
         sel.onchange = () => { state.tones[ch] = sel.value || null; post({ type: 'tones', value: state.tones }); };
         tr.children[2].append(sel);
       } else tr.children[2].textContent = '—';
@@ -773,7 +776,7 @@ function renderParts() {
     tr.children[1].textContent = inst; tr.children[1].title = inst;
     if (ch !== 9) {
       const sel = document.createElement('select');
-      sel.innerHTML = '<option value="">自動</option>' + Object.entries(TONES).map(([k, t]) => `<option value="${k}">${t.label}</option>`).join('');
+      sel.innerHTML = toneOptions();
       sel.onchange = () => { state.tones[ch] = sel.value || null; post({ type: 'tones', value: state.tones }); };
       tr.children[2].append(sel);
     } else tr.children[2].textContent = '—';
@@ -852,6 +855,7 @@ function runExport(format) {
   w.onerror = (e) => finish('失敗: ' + e.message);
   const chip = CHIPS.find((c) => c.id === state.chip);
   w.postMessage({ format, ...exportSource(), chip: state.chip, scale: state.scale, mutes: state.mutes, tones: state.tones, sr: 44100,
+    toneset: tg.active ? { tones: tg.active.set.tones, map: tg.active.set.map } : null,
     title: $('songTitle').textContent, game: state.curFile ? state.curFile.split('/').slice(-2, -1)[0] : '', system: `${chip.maker} ${chip.name}` });
 }
 function exportSource() { return state.song.zx ? { zx: state.song.zx, duration: state.song.duration } : state.song.reg ? { reg: state.song.reg, duration: state.song.duration } : { events: state.song.events, duration: state.song.duration }; }
@@ -862,6 +866,101 @@ function updateVgmBtn() {
   $('vgmBtn').disabled = !state.song || !ok;
   $('vgmBtn').title = ok ? '選んだ音源チップのレジスタ命令として書き出します' : 'この音源は VGM 形式に対応するチップがありません (ナムコ WSG/C30・K005289)';
 }
+
+// ---------- ゲームの音色で選ぶ ----------
+// 選んだゲームの VGM を数曲読み込み、そのゲームで使われている音色 (FM の設定・波形・パルス幅) を取り出して使う
+const tg = { active: null, seq: 0, scope: 'all' };
+function toneOptions() {
+  const std = Object.entries(TONES).filter(([, t]) => !t.game);
+  const game = tg.active ? Object.entries(tg.active.set.tones) : [];
+  const opt = ([k, t]) => `<option value="${k}">${t.label.replace(/[<>&"]/g, '')}</option>`;
+  return '<option value="">自動</option>' + (game.length ? '<optgroup label="ゲームの音色">' + game.map(opt).join('') + '</optgroup><optgroup label="標準の音色">' : '') + std.map(opt).join('') + (game.length ? '</optgroup>' : '');
+}
+document.querySelectorAll('#soundMode .mode').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('#soundMode .mode').forEach((x) => x.classList.toggle('active', x === b));
+  $('chipMode').hidden = b.dataset.mode !== 'chip';
+  $('gameMode').hidden = b.dataset.mode !== 'game';
+  if (b.dataset.mode === 'game') showToneGames();
+});
+async function showToneGames() {
+  const gs = (await loadGames()).filter((g) => !g.midi);
+  const box = $('tgScopes'); box.innerHTML = '';
+  for (const [id, label] of [['all', 'すべて'], ['arcade', 'アーケード'], ['home', '家庭用'], ...MAKERS.map((m) => ['maker:' + m, m])]) {
+    const b = document.createElement('button');
+    b.className = 'tab' + (tg.scope === id ? ' active' : ''); b.textContent = label;
+    b.onclick = () => { tg.scope = id; showToneGames(); };
+    box.append(b);
+  }
+  const q = $('tgFilter').value.trim().toLowerCase();
+  const [kind, val] = tg.scope.split(':');
+  const shown = gs.filter((g) => (kind === 'arcade' ? !g.home : kind === 'home' ? g.home : kind === 'maker' ? g.maker === val : true) && (!q || g.search.includes(q)));
+  const ul = $('tgList'); ul.innerHTML = '';
+  for (const g of shown.slice(0, 300)) {
+    const li = document.createElement('li');
+    const t = document.createElement('span'); t.textContent = g.title; li.append(t);
+    if (g.label) { const sy = document.createElement('span'); sy.className = 'sys'; sy.textContent = g.label; li.append(sy); }
+    li.title = 'このゲームの音色を使う'; li.dataset.path = g.path;
+    li.onclick = () => applyToneGame(g);
+    if (tg.active && tg.active.path === g.path) li.classList.add('cur');
+    ul.append(li);
+  }
+  $('tgStatus').textContent = shown.length > 300 ? `${shown.length} 作品 (上位 300 件を表示。名前で絞り込んでください)` : `${shown.length} 作品`;
+}
+$('tgFilter').oninput = () => showToneGames();
+async function applyToneGame(g) {
+  const id = ++tg.seq;
+  const dirs = await catTop(g.top || 'VGM Rips');
+  const tracks = trackFiles(dirs, g.path).slice(0, 6);
+  $('tgStatus').textContent = `「${g.title}」の曲を読み込んで音色を取り出し中… (${tracks.length} 曲)`;
+  const bufs = [];
+  for (const t of tracks) {
+    try { const r = await fetch(FILES + enc(t.file)); if (r.ok) bufs.push(await unpackVGM(await r.arrayBuffer())); } catch {}
+    if (id !== tg.seq) return;
+  }
+  applyToneBuffers(bufs, g.title, g.label, g.path, id);
+}
+$('tgFile').onchange = async (e) => {
+  const files = [...e.target.files]; if (!files.length) return;
+  const id = ++tg.seq;
+  $('tgStatus').textContent = '音色を取り出し中…';
+  const bufs = [];
+  for (const f of files) { try { bufs.push(await unpackVGM(await f.arrayBuffer())); } catch {} }
+  const title = files[0].name.replace(/\.vg[mz]$/i, '').replace(/^\d+\s*/, '');
+  applyToneBuffers(bufs, title, '手持ちのファイル', null, id);
+  e.target.value = '';
+};
+async function applyToneBuffers(bufs, title, sub, path, id) {
+  if (id !== tg.seq) return;
+  const a = bufs.length ? analyzeVGMs(bufs) : null;
+  if (!a || !a.base || !a.instruments.length) {
+    $('tgStatus').textContent = `「${title}」からは音色を取り出せませんでした (PCM だけで鳴らす基板などは音色を持っていません)`;
+    return;
+  }
+  const set = buildToneSet(a, id, title);
+  Object.assign(TONES, set.tones);
+  // ナムコの基板のゲームは、その基板の音源で
+  let base = a.base;
+  const where = (sub || '') + ' ' + (path || '');
+  if (base === 'cps1' && /Namco System 1\b/.test(where)) base = 'namcosys1';
+  else if (base === 'cps1' && /Namco System 2\b/.test(where)) base = 'namcosys2';
+  else if (base === 'cps1' && /Namco System 86/.test(where)) base = 'namcosys86';
+  tg.active = { title, sub, path, chip: a.chip, base, set };
+  post({ type: 'toneset', tones: set.tones, map: set.map });
+  selectChip(base);
+  const chip = CHIPS.find((c) => c.id === base);
+  $('tgActiveText').textContent = `🎮「${title}」の音色 (${a.chip}・${set.list.length} 種類) で再生中 → 音源: ${chip.maker} ${chip.name}`;
+  $('tgActive').hidden = false;
+  if (state.song) renderParts();
+  await showToneGames();
+  $('tgStatus').textContent = `「${title}」から ${set.list.length} 種類の音色を取り出しました。パートごとの音色も変えられます`;
+}
+$('tgClear').onclick = () => {
+  tg.active = null; tg.seq++;
+  post({ type: 'toneset', tones: {}, map: null });
+  $('tgActive').hidden = true;
+  if (state.song) renderParts();
+  if (!$('gameMode').hidden) showToneGames();
+};
 
 // ---------- 起動 ----------
 try { const saved = localStorage.getItem('chipswap.chip'); if (CHIPS.some((c) => c.id === saved)) state.chip = saved; } catch {}

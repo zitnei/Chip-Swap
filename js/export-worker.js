@@ -3,8 +3,10 @@ import { Player } from './engine.js';
 import { ZXPlayer } from './zx.js';
 import { RegPlayer } from './regplay.js';
 import { buildVGM } from './vgm.js';
+import { TONES } from './chips.js';
 
 onmessage = (ev) => {
+  if (ev.data.toneset) Object.assign(TONES, ev.data.toneset.tones);
   try {
     if (ev.data.format === 'vgm') {
       const bytes = buildVGM(ev.data);
@@ -18,6 +20,7 @@ function renderWav({ events, duration, zx, reg, chip, scale, mutes, tones, sr })
   p.setChip(chip, scale);
   p.engine.setMutes(mutes);
   p.engine.setTones(tones);
+  p.engine.setToneMap(arguments[0].toneset && arguments[0].toneset.map);
   if (zx) { p.load(zx.frames, zx.count, zx.clock); duration = p.duration; } else if (reg) { p.load(reg); duration = p.duration; } else p.load(events, duration);
   p.playing = true;
   const total = Math.ceil((duration + 2) * sr);

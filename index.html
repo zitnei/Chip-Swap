@@ -6,7 +6,7 @@
 <title>Chip Swap</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261110k">
+<link rel="stylesheet" href="style.css?v=20261110l">
 </head>
 <body>
 <header>
@@ -120,13 +120,35 @@
     <canvas id="scope" height="90"></canvas>
 
     <h2>音源を選ぶ</h2>
-    <div id="chipFilter" class="filter">
-      <button class="tab active" data-type="all">すべて</button>
-      <button class="tab" data-type="fm">FM音源</button>
-      <button class="tab" data-type="psg">PSG音源</button>
-      <button class="tab" data-type="wave">波形メモリ音源</button>
+    <div id="soundMode" class="mode-tabs">
+      <button class="mode active" data-mode="chip">🔧 基板・ゲーム機の音源で選ぶ</button>
+      <button class="mode" data-mode="game">🎮 ゲームの音色で選ぶ</button>
     </div>
-    <div id="chipGrid" class="chips"></div>
+    <div id="tgActive" class="tg-active" hidden>
+      <span id="tgActiveText"></span>
+      <button id="tgClear" class="ghost">✕ 解除 (標準の音色に戻す)</button>
+    </div>
+    <div id="chipMode">
+      <div id="chipFilter" class="filter">
+        <button class="tab active" data-type="all">すべて</button>
+        <button class="tab" data-type="cat:arcade">アーケード基板</button>
+        <button class="tab" data-type="cat:console">ゲーム機</button>
+        <button class="tab" data-type="fm">FM音源</button>
+        <button class="tab" data-type="psg">PSG音源</button>
+        <button class="tab" data-type="wave">波形メモリ音源</button>
+      </div>
+      <div id="chipGrid" class="chips"></div>
+    </div>
+    <div id="gameMode" hidden>
+      <p class="sub">選んだゲームの曲データ (VGM) から、そのゲームで実際に使われている音色を取り出して、今の曲を鳴らします。例: パックマニアの曲をサラマンダの音色で。</p>
+      <input id="tgFilter" type="search" placeholder="音色を使うゲームを探す (例: salamander, gradius, pac-mania)">
+      <div id="tgScopes" class="filter scopes"></div>
+      <div id="tgStatus" class="crumbs"></div>
+      <ul id="tgList" class="list tg-list"></ul>
+      <label id="tgDrop" class="drop small">手持ちの VGM (.vgm / .vgz) から音色を取り出す (複数選択可)<br><span class="sub">例: 悪魔城伝説など、一覧に無いゲーム</span>
+        <input id="tgFile" type="file" accept=".vgm,.vgz" multiple hidden>
+      </label>
+    </div>
 
     <div class="two">
       <div>
@@ -145,6 +167,6 @@
 </main>
 
 <footer>曲データ: <a href="https://chiptune.app/" target="_blank" rel="noopener">chiptune.app (Chip Player JS)</a> ・ 差し替えた音源はブラウザ内で合成した近似エミュレーションです ・ 「元の音源で聴く」は <a href="https://github.com/ValleyBell/libvgm" target="_blank" rel="noopener">libvgm</a> (Valley Bell ほか) ・<a href="https://github.com/mmontag/chip-player-js" target="_blank" rel="noopener">Chip Player JS</a> (Matt Montag)・<a href="https://github.com/divideconcept/FluidLite" target="_blank" rel="noopener">FluidLite</a> のコードを使用 ・ <a href="https://github.com/zitnei/Chip-Swap" target="_blank" rel="noopener">ソースコード</a> (GPL-3.0)</footer>
-<script type="module" src="js/app.js?v=20261110k"></script>
+<script type="module" src="js/app.js?v=20261110l"></script>
 </body>
 </html>

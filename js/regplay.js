@@ -1,6 +1,7 @@
 // VGM から取り出したチャンネルごとの音程・音量を、選んだ音源チップで鳴らし直す
 import { Engine, waveTable } from './engine.js';
 const FRAME_HZ_VGM = 60;
+const VOICE_FAMS = ['lead', 'piano', 'strings', 'brass', 'guitar', 'bell', 'organ', 'reed', 'pad'];
 import { HIT_CLASSES } from './vgmin.js';
 
 const GM_DRUM = { kick: 36, snare: 38, hat: 42, tom: 45, crash: 49, perc: 56, ohat: 46, ride: 51, clap: 39 };
@@ -82,7 +83,8 @@ export class RegPlayer {
         used.add(c); this.map.set(w.v, c); fresh = true;
       }
       const note = Math.round(69 + 12 * Math.log2(w.freq / 440));
-      const key = tones[w.v] || (note < 48 ? 'bass' : 'lead');
+      // ゲームの音色を使う時は、元のチャンネルごとにそのゲームの色々な音色を割り当てる
+      const key = tones[w.v] || e.mapTone(note < 48 ? 'bass' : e.toneMap ? VOICE_FAMS[w.v % VOICE_FAMS.length] : 'lead');
       if (fresh || w.onset || !c.busy || c.toneKey !== key) {
         if (fresh || w.onset || c.kind !== 'fm' || !c.busy) { e.start(c, 0, note, 1, key); }
         c.direct = true;

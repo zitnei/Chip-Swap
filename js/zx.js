@@ -91,7 +91,7 @@ export class ZXPlayer {
         this.prevVol[ch] = 0;
         continue;
       }
-      const key = e.tones[ch] || 'lead';
+      const key = e.tones[ch] || e.mapTone('lead');
       const note = freq > 0 ? Math.round(69 + 12 * Math.log2(freq / 440)) : 60;
       const onset = !c.busy || !c.direct || c.released || vol >= this.prevVol[ch] + 3 || c.toneKey !== key;
       if (onset && (c.kind === 'fm' || !c.busy || !c.direct || c.toneKey !== key)) {

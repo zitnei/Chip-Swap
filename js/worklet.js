@@ -1,6 +1,7 @@
 import { Player } from './engine.js';
 import { ZXPlayer } from './zx.js';
 import { RegPlayer } from './regplay.js';
+import { TONES } from './chips.js';
 
 // 再生する曲の種類 (MIDI / ZX) に応じてプレイヤーを差し替える
 const FADE = Math.round(sampleRate * 0.012);
@@ -29,13 +30,15 @@ class ChipProcessor extends AudioWorkletProcessor {
         case 'chip': cfg.chip = m.id; cfg.scale = m.scale; p.setChip(m.id, m.scale); break;
         case 'mutes': cfg.mutes = m.value; p.engine.setMutes(m.value); break;
         case 'tones': cfg.tones = m.value; p.engine.setTones(m.value); break;
+        // ゲームから取り出した音色 (キー → 音色) と、ファミリー → 音色キーの対応
+        case 'toneset': Object.assign(TONES, m.tones || {}); cfg.toneMap = m.map || null; p.engine.setToneMap(cfg.toneMap); break;
       }
     };
   }
   make(type) {
     const p = type === 'zx' ? new ZXPlayer(sampleRate) : type === 'reg' ? new RegPlayer(sampleRate) : new Player(sampleRate);
     const c = this.cfg;
-    p.setChip(c.chip, c.scale); p.engine.setMutes(c.mutes); p.engine.setTones(c.tones); p.loop = c.loop;
+    p.setChip(c.chip, c.scale); p.engine.setMutes(c.mutes); p.engine.setTones(c.tones); p.engine.setToneMap(c.toneMap); p.loop = c.loop;
     return p;
   }
   process(_in, outputs) {

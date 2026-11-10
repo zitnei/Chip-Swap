@@ -516,6 +516,7 @@ export function buildVGM({ events, duration, zx, reg, chip, mutes, tones, title,
   const eng = p.engine;
   p.setChip(chip, 1);
   eng.setMutes(mutes); eng.setTones(tones);
+  if (arguments[0].toneset) eng.setToneMap(arguments[0].toneset.map);
   if (zx) p.load(zx.frames, zx.count, zx.clock); else if (reg) p.load(reg); else p.load(events, duration);
   p.playing = true;
   const frameLen = zx ? SR / 50 : FRAME;

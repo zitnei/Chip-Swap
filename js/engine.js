@@ -26,8 +26,13 @@ export function waveTable(key, bits) {
   if (key === 'noise32') {
     let s = 12345;
     for (let i = 0; i < 32; i++) { s = (s * 1103515245 + 12345) & 0x7fffffff; t[i] = (s / 0x7fffffff) * 2 - 1; }
+  } else if (TONES[key] && TONES[key].table) {
+    const s = TONES[key].table;
+    let max = 0;
+    for (let i = 0; i < 32; i++) max = Math.max(max, Math.abs(s[i % s.length]));
+    for (let i = 0; i < 32; i++) t[i] = s[i % s.length] / (max || 1);
   } else {
-    const h = key === 'sine' ? [1] : TONES[key].harm;
+    const h = key === 'sine' ? [1] : (TONES[key] || TONES.lead).harm;
     let max = 0;
     for (let i = 0; i < 32; i++) {
       let v = 0;
@@ -165,6 +170,9 @@ export class Engine {
 
   setMutes(m) { this.mutes = m.slice(); for (let ch = 0; ch < 16; ch++) if (m[ch]) this.channelOff(ch, true); }
   setTones(t) { this.tones = t.slice(); }
+  // ゲームの音色: ファミリー (bass / lead / piano …) → 音色キー
+  setToneMap(map) { this.toneMap = map || null; }
+  mapTone(fam) { return (this.toneMap && this.toneMap[fam]) || fam; }
 
   reset() {
     for (const c of this.chans) { c.busy = false; c.amp = 0; if (c.ops) for (const o of c.ops) { o.lvl = 0; o.st = 3; } }
@@ -178,7 +186,7 @@ export class Engine {
 
   allOff() { for (const c of this.chans) this.release(c); for (const m of this.midi) m.held.clear(); }
 
-  toneKey(ch) { return this.tones[ch] || FAMILY_TONE[this.midi[ch].program >> 3]; }
+  toneKey(ch) { return this.tones[ch] || this.mapTone(FAMILY_TONE[this.midi[ch].program >> 3]); }
 
   event(e) {
     const m = this.midi[e.ch];
@@ -225,7 +233,7 @@ export class Engine {
   pan(c, midiPan) {
     const mode = c.g.stereo;
     if (!mode) { c.gl = c.gr = 1; return; }
-    if (this.def.id === 'cps1' || this.def.id === 'ym2612' || this.def.id === 'ym2610') {
+    if (c.kind === 'fm' || c.kind === 'pcm') {
       // OPN/OPM は L / C / R の3段階
       c.gl = midiPan > 85 ? 0 : 1; c.gr = midiPan < 43 ? 0 : 1;
       if (c.gl && c.gr) { c.gl = c.gr = 1; } else { c.gl *= 1.4; c.gr *= 1.4; }

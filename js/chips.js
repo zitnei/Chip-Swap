@@ -75,7 +75,7 @@ export const FAMILY_TONE = ['piano', 'bell', 'organ', 'guitar', 'bass', 'strings
 // route: ドラムの種類ごとにどのグループで鳴らすか
 export const CHIPS = [
   {
-    id: 'ym2612', type: 'fm', maker: 'セガ', name: 'YM2612 (OPN2) + SN76489', system: 'メガドライブ',
+    id: 'ym2612', cat: 'console', type: 'fm', maker: 'セガ', name: 'YM2612 (OPN2) + SN76489', system: 'メガドライブ',
     desc: 'FM 4オペ 5ch + DAC PCMドラム + PSG 矩形波3ch + ノイズ', lpf: 7500, gain: 0.45,
     groups: [
       { name: 'fm', label: 'FM', kind: 'fm', count: 5, role: 'mel', dacBits: 9, stereo: true, gain: 0.55 },
@@ -86,7 +86,7 @@ export const CHIPS = [
     route: { default: ['dac'], hat: ['nz'], ohat: ['nz'], ride: ['nz'], perc: ['nz'] },
   },
   {
-    id: 'cps1', type: 'fm', maker: 'カプコン', name: 'YM2151 (OPM) + OKI MSM6295', system: 'CPS-1 (ストリートファイターII 等)',
+    id: 'cps1', cat: 'arcade', type: 'fm', maker: 'カプコン', name: 'YM2151 (OPM) + OKI MSM6295', system: 'CPS-1 (ストリートファイターII 等)',
     desc: 'FM 4オペ 8ch + 4bit ADPCM 4ch (7.5kHz) ドラム', lpf: 9000, gain: 0.44,
     groups: [
       { name: 'fm', label: 'FM', kind: 'fm', count: 8, role: 'mel', dacBits: 10, stereo: true, gain: 0.45 },
@@ -95,7 +95,7 @@ export const CHIPS = [
     route: { default: ['oki'] },
   },
   {
-    id: 'ym2610', type: 'fm', maker: 'タイトー', name: 'YM2610 (OPNB)', system: 'F2システム / ダライアスII (ネオジオも同系)',
+    id: 'ym2610', cat: 'arcade', type: 'fm', maker: 'タイトー', name: 'YM2610 (OPNB)', system: 'F2システム / ダライアスII (ネオジオも同系)',
     desc: 'FM 4ch + SSG 3ch + ADPCM-A 6ch (18.5kHz) ドラム', lpf: 12000, gain: 0.46,
     groups: [
       { name: 'fm', label: 'FM', kind: 'fm', count: 4, role: 'mel', dacBits: 12, stereo: true, gain: 0.5 },
@@ -105,7 +105,7 @@ export const CHIPS = [
     route: { default: ['adpcm'] },
   },
   {
-    id: 'namcowsg', type: 'wave', maker: 'ナムコ', name: 'WSG (3ch 波形メモリ)', system: 'パックマン / ギャラガ',
+    id: 'namcowsg', cat: 'arcade', type: 'wave', maker: 'ナムコ', name: 'WSG (3ch 波形メモリ)', system: 'パックマン / ギャラガ',
     desc: '4bit・32サンプル波形メモリ 3ch。ノイズ無しなのでドラムも波形で代用', lpf: 10000, gain: 2.0,
     groups: [
       { name: 'wsg', label: 'WSG', kind: 'wave', count: 3, role: 'both', bits: 4, vol: 'lin4', gain: 0.35 },
@@ -113,7 +113,7 @@ export const CHIPS = [
     route: { default: ['wsg'] },
   },
   {
-    id: 'namcoc30', type: 'wave', maker: 'ナムコ', name: 'C30 (8ch 波形メモリ)', system: 'System 86 / System 1',
+    id: 'namcoc30', cat: 'arcade', type: 'wave', maker: 'ナムコ', name: 'C30 (8ch 波形メモリ)', system: 'System 86 / System 1',
     desc: '4bit 波形メモリ 8ch・ステレオ・ノイズモード付き', lpf: 12000, gain: 1.3,
     groups: [
       { name: 'c30', label: 'C30', kind: 'wave', count: 8, role: 'both', bits: 4, vol: 'lin4', noise: true, stereo: true, gain: 0.28 },
@@ -121,7 +121,43 @@ export const CHIPS = [
     route: { default: ['c30'] },
   },
   {
-    id: 'scc', type: 'wave', maker: 'コナミ', name: 'SCC (K051649) + AY-3-8910', system: 'MSX (グラディウス2・悪魔城ドラキュラ 等)',
+    id: 'namco15xx', cat: 'arcade', type: 'wave', maker: 'ナムコ', name: '15XX (8ch 波形メモリ)', system: 'マッピー / スーパーパックマン / ドルアーガの塔',
+    desc: '4bit・32サンプル波形メモリ 8ch (モノラル・ノイズ無し)。ドラムも波形で代用', lpf: 10000, gain: 1.3,
+    groups: [
+      { name: 'wsg', label: '15XX', kind: 'wave', count: 8, role: 'both', bits: 4, vol: 'lin4', gain: 0.26 },
+    ],
+    route: { default: ['wsg'] },
+  },
+  {
+    id: 'namcosys86', cat: 'arcade', type: 'fm', maker: 'ナムコ', name: 'YM2151 + C30', system: 'System 86 (源平討魔伝・妖怪道中記 等)',
+    desc: 'FM 4オペ 8ch + 4bit 波形メモリ 8ch (ノイズ付き) のツイン音源', lpf: 11000, gain: 0.5,
+    groups: [
+      { name: 'fm', label: 'FM', kind: 'fm', count: 8, role: 'mel', dacBits: 10, stereo: true, gain: 0.42 },
+      { name: 'c30', label: 'C30', kind: 'wave', count: 8, role: 'both', bits: 4, vol: 'lin4', noise: true, stereo: true, gain: 0.22 },
+    ],
+    route: { default: ['c30'] },
+  },
+  {
+    id: 'namcosys1', cat: 'arcade', type: 'fm', maker: 'ナムコ', name: 'YM2151 + C30 + DAC', system: 'System 1 (パックマニア・ギャラガ’88・スプラッターハウス 等)',
+    desc: 'FM 4オペ 8ch + 4bit 波形メモリ 8ch + 8bit DAC ドラム', lpf: 11000, gain: 0.5,
+    groups: [
+      { name: 'fm', label: 'FM', kind: 'fm', count: 8, role: 'mel', dacBits: 10, stereo: true, gain: 0.42 },
+      { name: 'c30', label: 'C30', kind: 'wave', count: 8, role: 'mel', bits: 4, vol: 'lin4', noise: true, stereo: true, gain: 0.2 },
+      { name: 'dac', label: 'DAC', kind: 'pcm', count: 2, role: 'drum', pcm: { rate: 16000, enc: 'pcm8' }, stereo: true, gain: 0.8 },
+    ],
+    route: { default: ['dac'] },
+  },
+  {
+    id: 'namcosys2', cat: 'arcade', type: 'fm', maker: 'ナムコ', name: 'YM2151 + C140', system: 'System 2 (オーダイン・ワルキューレの伝説・ファイナルラップ 等)',
+    desc: 'FM 4オペ 8ch + C140 PCM 8ch ドラム (21kHz)', lpf: 12000, gain: 0.5,
+    groups: [
+      { name: 'fm', label: 'FM', kind: 'fm', count: 8, role: 'mel', dacBits: 10, stereo: true, gain: 0.45 },
+      { name: 'c140', label: 'C140', kind: 'pcm', count: 8, role: 'drum', pcm: { rate: 21390, enc: 'pcm8' }, stereo: true, gain: 0.8 },
+    ],
+    route: { default: ['c140'] },
+  },
+  {
+    id: 'scc', cat: 'console', type: 'wave', maker: 'コナミ', name: 'SCC (K051649) + AY-3-8910', system: 'MSX (グラディウス2・悪魔城ドラキュラ 等)',
     desc: '8bit・32サンプル波形メモリ 5ch + PSG 3ch', lpf: 11000, gain: 1.15,
     groups: [
       { name: 'scc', label: 'SCC', kind: 'wave', count: 5, role: 'mel', bits: 8, vol: 'lin4', clock: 3579545, div: 32, pOff: 1, maxP: 4095, gain: 0.3 },
@@ -130,7 +166,7 @@ export const CHIPS = [
     route: { default: ['psg'] },
   },
   {
-    id: 'konamiac', type: 'wave', maker: 'コナミ', name: 'K005289 + AY-3-8910 ×2', system: 'グラディウス (アーケード)',
+    id: 'konamiac', cat: 'arcade', type: 'wave', maker: 'コナミ', name: 'K005289 + AY-3-8910 ×2', system: 'グラディウス (アーケード)',
     desc: '4bit 波形メモリ 2ch + PSG 6ch', lpf: 10000, gain: 1.15,
     groups: [
       { name: 'k5289', label: 'K005289', kind: 'wave', count: 2, role: 'mel', bits: 4, vol: 'lin4', clock: 3579545, div: 32, pOff: 0, maxP: 4095, gain: 0.35 },
@@ -139,7 +175,7 @@ export const CHIPS = [
     route: { default: ['psg'] },
   },
   {
-    id: 'ay8910', type: 'psg', maker: '汎用 PSG', name: 'AY-3-8910 / YM2149', system: 'MSX / 各社アーケード',
+    id: 'ay8910', cat: 'both', type: 'psg', maker: '汎用 PSG', name: 'AY-3-8910 / YM2149', system: 'MSX / 各社アーケード',
     desc: '矩形波 3ch (ノイズはトーンにミックス)。ドラムは 3ch 目を奪う', lpf: 10000, gain: 1.3,
     groups: [
       { name: 'psg', label: 'PSG', kind: 'psg', count: 3, role: 'both', clock: 1789772, div: 16, pOff: 0, maxP: 4095, vol: 'ay', noise: true, dutyFixed: true, gain: 0.3 },
@@ -147,7 +183,7 @@ export const CHIPS = [
     route: { default: ['psg'] },
   },
   {
-    id: 'zx128', type: 'psg', maker: 'シンクレア', name: 'AY-3-8912', system: 'ZXスペクトラム 128',
+    id: 'zx128', cat: 'console', type: 'psg', maker: 'シンクレア', name: 'AY-3-8912', system: 'ZXスペクトラム 128',
     desc: '矩形波 3ch + ノイズ + ハードウェアエンベロープ。ZX チューンは実機どおりに再生', lpf: 10000, gain: 1.3,
     groups: [
       { name: 'psg', label: 'PSG', kind: 'psg', count: 3, role: 'both', clock: 1773400, div: 16, pOff: 0, maxP: 4095, vol: 'ay', noise: true, dutyFixed: true, gain: .3 },
@@ -155,7 +191,7 @@ export const CHIPS = [
     route: { default: ['psg'] },
   },
   {
-    id: 'sn76489', type: 'psg', maker: 'セガ', name: 'SN76489', system: 'SG-1000 / マスターシステム / ゲームギア',
+    id: 'sn76489', cat: 'console', type: 'psg', maker: 'セガ', name: 'SN76489', system: 'SG-1000 / マスターシステム / ゲームギア',
     desc: '矩形波 3ch + ノイズ 1ch (最低音 約109Hz)', lpf: 10000, gain: 1.0,
     groups: [
       { name: 'sq', label: 'SQ', kind: 'psg', count: 3, role: 'mel', clock: 3579545, div: 32, pOff: 0, maxP: 1023, vol: 'sn', dutyFixed: true, gain: 0.3 },
@@ -164,7 +200,7 @@ export const CHIPS = [
     route: { default: ['nz'] },
   },
   {
-    id: '2a03', type: 'psg', maker: '任天堂', name: '2A03 (RP2A03)', system: 'ファミコン',
+    id: '2a03', cat: 'console', type: 'psg', maker: '任天堂', name: '2A03 (RP2A03)', system: 'ファミコン',
     desc: 'パルス 2ch + 三角波 + ノイズ + DPCM (1bit Δ)', lpf: 14000, gain: 0.55, preferTri: true,
     groups: [
       { name: 'pulse', label: 'PULSE', kind: 'psg', count: 2, role: 'mel', clock: 1789773, div: 16, pOff: 1, maxP: 2047, vol: 'lin4', gain: 0.28 },
@@ -175,7 +211,7 @@ export const CHIPS = [
     route: { default: ['noise'], kick: ['dpcm'], tom: ['dpcm'] },
   },
   {
-    id: 'huc6280', type: 'wave', maker: 'ハドソン / NEC', name: 'HuC6280', system: 'PCエンジン',
+    id: 'huc6280', cat: 'console', type: 'wave', maker: 'ハドソン / NEC', name: 'HuC6280', system: 'PCエンジン',
     desc: '5bit・32サンプル波形メモリ 6ch・ステレオ (5,6ch はノイズ可)', lpf: 13000, gain: 1.4,
     groups: [
       { name: 'w', label: 'WAVE', kind: 'wave', count: 4, role: 'mel', bits: 5, vol: 'huc', clock: 3579545, div: 32, pOff: 0, maxP: 4095, stereo: true, gain: 0.28 },
