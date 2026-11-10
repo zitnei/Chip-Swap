@@ -43,8 +43,12 @@ async function ensureAudio() {
 const post = (m) => node && node.port.postMessage(m);
 
 function onStatus(s) {
+  if (s.id !== (state.loadId || 0)) return;
   state.time = s.time;
-  if (state.playing && !s.playing) setPlaying(false);
+  if (state.playing && !s.playing) {
+    setPlaying(false);
+    if (s.ended && $('nextChk').checked) playNext(1, true);
+  }
   if (!seeking && state.song) $('seek').value = Math.round(s.time / Math.max(1, state.song.duration) * 1000);
   if (state.song) $('time').textContent = `${fmt(Math.min(s.time, state.song.duration))} / ${fmt(state.song.duration)}`;
   renderHw(s.chans);
@@ -55,7 +59,13 @@ function setPlaying(p) {
   $('playBtn').textContent = p ? '❚❚ 一時停止' : '▶ 再生';
 }
 
-const loadMsg = () => state.song.zx ? { type: 'load', zx: state.song.zx } : state.song.reg ? { type: 'load', reg: state.song.reg } : { type: 'load', events: state.song.events, duration: state.song.duration };
+// 読み込みごとに番号を付け、前の曲の状態通知 (「終わった」など) を新しい曲のものと取り違えないようにする
+let loadSeq = 0;
+const loadMsg = () => {
+  state.loadId = ++loadSeq;
+  const m = state.song.zx ? { zx: state.song.zx } : state.song.reg ? { reg: state.song.reg } : { events: state.song.events, duration: state.song.duration };
+  return { type: 'load', id: state.loadId, ...m };
+};
 
 // ---------- 曲の読み込み ----------
 async function loadSong(buf, name, sub, path = '', songId = null) {
@@ -76,7 +86,7 @@ async function loadSong(buf, name, sub, path = '', songId = null) {
   await ensureAudio();
   post({ type: 'mutes', value: state.mutes });
   post({ type: 'tones', value: state.tones });
-  post({ type: 'load', events: song.events, duration: song.duration });
+  post(loadMsg());
   post({ type: 'play' }); setPlaying(true);
 }
 
@@ -89,14 +99,14 @@ function setOrigLink(songId) {
 // ---------- VGM (アーケード基板などの音源チップ命令の記録) ----------
 async function loadVGM(buf, name, sub) {
   let src;
-  try { src = parseVGM(await unpackVGM(buf)); } catch (e) { $('songSub').textContent = '読み込めませんでした: ' + e.message; return; }
+  try { src = parseVGM(await unpackVGM(buf)); } catch (e) { $('songSub').textContent = '読み込めませんでした: ' + e.message; return false; }
   const nv = src.voices.length;
   let active = 0;
   for (let i = 0; i < src.count * nv; i++) if (src.data[i * 3 + 2] & 1) { active++; break; }
   if (!active && !src.hits.length) {
     $('songTitle').textContent = name;
     $('songSub').textContent = `この曲は音程を読み取れる音源を使っていません (${[...src.chips, ...src.unsupported].join(' / ') || '不明'})。PCM だけで鳴らす基板は非対応です`;
-    return;
+    return false;
   }
   state.song = { reg: src, duration: src.duration };
   state.mutes.fill(false); state.tones.fill(null);
@@ -157,8 +167,8 @@ async function loadRemote(path, songId = null) {
     state.curFile = path;
     markCurrent();
     const parts = path.split('/');
-    await loadSong(await r.arrayBuffer(), parts.pop(), parts.join(' / '), path, songId);
-  } catch (e) { $('songSub').textContent = 'ダウンロード失敗: ' + e.message; }
+    return await loadSong(await r.arrayBuffer(), parts.pop(), parts.join(' / '), path, songId);
+  } catch (e) { $('songSub').textContent = 'ダウンロード失敗: ' + e.message; return false; }
 }
 
 // ---------- chiptune.app ブラウザ ----------
@@ -222,10 +232,11 @@ async function browse(path) {
     if (path !== '/') addItem('📁 ..', () => browse(path.replace(/\/[^/]+$/, '') || '/'));
     // ルートでは MIDI を含むフォルダを先頭に
     if (path === '/') items.sort((a, b) => (/midi|project ay|vgm rips/i.test(b.path) - /midi|project ay|vgm rips/i.test(a.path)));
+    const queue = items.filter((it) => it.type !== 'directory' && isMidi(it.path)).map((it) => ({ file: it.path, songId: it.songId || null }));
     for (const it of items) {
       const name = it.path.split('/').pop();
       if (it.type === 'directory') addItem('📁 ' + name, () => browse('/' + it.path), it.count + '曲');
-      else addItem('♪ ' + name, isMidi(name) ? () => loadRemote(it.path, it.songId) : null, null, it.path);
+      else addItem('♪ ' + name, isMidi(name) ? () => playQueue(queue, queue.findIndex((q) => q.file === it.path)) : null, null, it.path);
     }
     markCurrent();
   } catch (e) { msg(`取得できませんでした (${e.message})`); }
@@ -241,7 +252,7 @@ function addItem(label, onClick, count, file) {
   else { li.classList.add('off'); li.title = 'MIDI 以外は非対応'; }
   $('list').append(li);
 }
-function markCurrent() { for (const li of $('list').children) li.classList.toggle('cur', li.dataset.file === state.curFile); }
+function markCurrent() { for (const li of document.querySelectorAll('.list li')) li.classList.toggle('cur', !!li.dataset.file && li.dataset.file === state.curFile); }
 
 function renderCrumbs() {
   const c = $('crumbs'); c.innerHTML = '';
@@ -267,10 +278,20 @@ $('searchForm').onsubmit = async (e) => {
     ul.innerHTML = '';
     addItem('📁 フォルダ表示に戻る', () => browse(state.path));
     if (!items.length) addItem('見つかりませんでした', null);
-    for (const it of items) {
+    const queue = items.map((it) => ({ file: it.file, songId: it.song_id || null }));
+    let lastDir = null;
+    items.forEach((it, i) => {
       const parts = it.file.split('/');
-      addItem('♪ ' + parts.slice(-2).join(' / '), () => loadRemote(it.file, it.song_id), null, it.file);
-    }
+      const dir = parts.slice(0, -1).join('/');
+      if (dir !== lastDir) {
+        lastDir = dir;
+        const h = document.createElement('li');
+        h.className = 'group'; h.textContent = '🎮 ' + parts.at(-2); h.title = dir;
+        h.onclick = () => openGameByPath('/' + dir);
+        $('list').append(h);
+      }
+      addItem('　♪ ' + parts.at(-1), () => playQueue(queue, i), null, it.file);
+    });
     markCurrent();
   } catch (err) { msg(`検索できませんでした (${err.message})`); }
 };
@@ -281,7 +302,7 @@ $('fileInput').onchange = (e) => readLocal(e.target.files[0]);
 drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); readLocal(e.dataTransfer.files[0]); };
-async function readLocal(f) { if (f) { state.curFile = null; await loadSong(await f.arrayBuffer(), f.name, 'ローカルファイル'); } }
+async function readLocal(f) { if (f) { state.curFile = null; state.queue = []; state.qi = -1; updateQueueBtns(); await loadSong(await f.arrayBuffer(), f.name, 'ローカルファイル'); } }
 $('urlForm').onsubmit = async (e) => {
   e.preventDefault();
   const url = $('urlInput').value.trim(); if (!url) return;
@@ -291,11 +312,114 @@ $('urlForm').onsubmit = async (e) => {
   } catch (err) { alert('取得できませんでした: ' + err.message); }
 };
 
-document.querySelectorAll('.tab').forEach((t) => t.onclick = () => {
-  document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === t));
-  $('tab-browse').classList.toggle('hidden', t.dataset.tab !== 'browse');
-  $('tab-local').classList.toggle('hidden', t.dataset.tab !== 'local');
-});
+function selectTab(name) {
+  document.querySelectorAll('.tabs .tab').forEach((x) => x.classList.toggle('active', x.dataset.tab === name));
+  for (const id of ['games', 'browse', 'local']) $('tab-' + id).classList.toggle('hidden', id !== name);
+  if (name === 'browse' && !$('list').children.length) browse('/');
+}
+document.querySelectorAll('.tabs .tab').forEach((t) => t.onclick = () => selectTab(t.dataset.tab));
+
+// ---------- 再生リスト (前の曲・次の曲・連続再生) ----------
+state.queue = []; state.qi = -1;
+async function playQueue(queue, i, auto = false) {
+  if (!queue[i]) return;
+  state.queue = queue; state.qi = i;
+  updateQueueBtns();
+  const ok = await loadRemote(queue[i].file, queue[i].songId);
+  // 連続再生中に鳴らせない曲 (PCM だけの基板など) は飛ばす
+  if (ok === false && auto) setTimeout(() => playNext(1, true), 800);
+}
+function playNext(d, auto = false) {
+  const i = state.qi + d;
+  if (i < 0 || i >= state.queue.length) return false;
+  playQueue(state.queue, i, auto);
+  return true;
+}
+function updateQueueBtns() {
+  $('prevBtn').disabled = state.qi <= 0;
+  $('nextBtn').disabled = state.qi < 0 || state.qi >= state.queue.length - 1;
+}
+$('prevBtn').onclick = () => playNext(-1);
+$('nextBtn').onclick = () => playNext(1);
+
+// ---------- ゲーム別 (VGM Rips / Arcade) ----------
+const GAME_ROOT = '/VGM Rips/Arcade';
+let games = null;
+const splitTitle = (n) => { const m = n.match(/^(.*?)\s*\(([^()]*)\)\s*$/); return m ? { title: m[1], sys: m[2] } : { title: n, sys: '' }; };
+const letterOf = (t) => { const c = (t[0] || '#').toUpperCase(); return c >= 'A' && c <= 'Z' ? c : '#'; };
+function trackFiles(dirs, path) {
+  const out = [];
+  for (const e of dirs[path] || []) {
+    if (typeof e[1] === 'number') out.push(...trackFiles(dirs, path + '/' + e[0]));
+    else out.push({ file: path.slice(1) + '/' + e[0], songId: e[1] || null, label: e[0].replace(/\.vg[mz]$/i, '') });
+  }
+  return out;
+}
+async function loadGames() {
+  if (games) return games;
+  const dirs = await catTop('VGM Rips');
+  games = (dirs[GAME_ROOT] || []).filter((e) => typeof e[1] === 'number')
+    .map((e) => ({ name: e[0], count: e[1], ...splitTitle(e[0]) }))
+    .sort((a, b) => a.title.localeCompare(b.title, 'en', { sensitivity: 'base' }));
+  return games;
+}
+function gameMsg(text) { const ul = $('gameList'); ul.innerHTML = ''; const li = document.createElement('li'); li.className = 'msg'; li.textContent = text; ul.append(li); }
+async function showGames() {
+  $('gameHead').hidden = true; $('gameIndex').hidden = false;
+  let gs;
+  try { gs = await loadGames(); } catch (e) { return gameMsg('ゲーム一覧を読み込めませんでした (' + e.message + ')'); }
+  const q = $('gameFilter').value.trim().toLowerCase();
+  const shown = q ? gs.filter((g) => g.name.toLowerCase().includes(q)) : gs;
+  $('gameCount').textContent = q ? `${shown.length} 作品が該当` : `アーケード ${gs.length} 作品・${gs.reduce((n, g) => n + g.count, 0).toLocaleString()} 曲`;
+  const ul = $('gameList'); ul.innerHTML = '';
+  const letters = new Set();
+  let last = '';
+  for (const g of shown) {
+    const L = letterOf(g.title);
+    if (L !== last) { const h = document.createElement('li'); h.className = 'letter'; h.textContent = L; h.dataset.letter = L; ul.append(h); last = L; letters.add(L); }
+    const li = document.createElement('li');
+    const t = document.createElement('span'); t.textContent = g.title; li.append(t);
+    if (g.sys) { const sy = document.createElement('span'); sy.className = 'sys'; sy.textContent = g.sys; li.append(sy); }
+    const n = document.createElement('span'); n.className = 'n'; n.textContent = g.count + '曲'; li.append(n);
+    li.title = g.name; li.onclick = () => showGame(g);
+    ul.append(li);
+  }
+  if (!shown.length) gameMsg('該当するゲームはありません');
+  const bar = $('gameLetters'); bar.innerHTML = '';
+  for (const L of ['#', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ']) {
+    const b = document.createElement('button');
+    b.textContent = L; b.disabled = !letters.has(L);
+    b.onclick = () => { const h = ul.querySelector(`[data-letter="${L}"]`); if (h) ul.scrollTop += h.getBoundingClientRect().top - ul.getBoundingClientRect().top; };
+    bar.append(b);
+  }
+}
+async function showGame(g) {
+  $('gameIndex').hidden = true; $('gameHead').hidden = false;
+  $('gameTitle').textContent = g.title;
+  $('gameSys').textContent = [g.sys, g.count + '曲'].filter(Boolean).join(' ・ ');
+  const dirs = await catTop('VGM Rips');
+  const tracks = trackFiles(dirs, GAME_ROOT + '/' + g.name);
+  const ul = $('gameList'); ul.innerHTML = '';
+  tracks.forEach((t, i) => {
+    const li = document.createElement('li');
+    li.textContent = '♪ ' + t.label; li.title = t.label; li.dataset.file = t.file;
+    li.onclick = () => playQueue(tracks, i);
+    ul.append(li);
+  });
+  $('gamePlayAll').onclick = () => playQueue(tracks, 0);
+  ul.scrollTop = 0;
+  markCurrent();
+}
+async function openGameByPath(dir) {
+  if (!dir.startsWith(GAME_ROOT + '/')) return browse(dir);
+  const name = dir.slice(GAME_ROOT.length + 1).split('/')[0];
+  const g = (await loadGames()).find((x) => x.name === name);
+  if (!g) return browse(dir);
+  selectTab('games');
+  showGame(g);
+}
+$('gameBack').onclick = () => showGames();
+$('gameFilter').oninput = () => showGames();
 
 // ---------- 再生コントロール ----------
 $('playBtn').onclick = async () => {
@@ -493,5 +617,5 @@ function updateVgmBtn() {
 // ---------- 起動 ----------
 try { const saved = localStorage.getItem('chipswap.chip'); if (CHIPS.some((c) => c.id === saved)) state.chip = saved; } catch {}
 renderChips();
-browse('/');
+showGames();
 function msg(text) { const ul = $('list'); ul.innerHTML = ''; const li = document.createElement('li'); li.className = 'msg'; li.textContent = text; ul.append(li); }

@@ -14,6 +14,7 @@ class ChipProcessor extends AudioWorkletProcessor {
       let p = this.player;
       switch (m.type) {
         case 'load':
+          this.loadId = m.id || 0;
           p = this.player = this.make(m.zx ? 'zx' : m.reg ? 'reg' : 'midi');
           if (m.zx) p.load(m.zx.frames, m.zx.count, m.zx.clock); else if (m.reg) p.load(m.reg); else p.load(m.events, m.duration);
           p.playing = false;
@@ -42,7 +43,7 @@ class ChipProcessor extends AudioWorkletProcessor {
     if ((this.tick += L.length) >= 2048) {
       this.tick = 0;
       const p = this.player;
-      this.port.postMessage({ type: 'status', time: p.pos / sampleRate, playing: p.playing, ended: p.ended, chans: p.snapshot() });
+      this.port.postMessage({ type: 'status', id: this.loadId || 0, time: p.pos / sampleRate, playing: p.playing, ended: p.ended, chans: p.snapshot() });
     }
     return true;
   }

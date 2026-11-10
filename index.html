@@ -17,11 +17,28 @@
   <!-- 曲を選ぶ -->
   <section class="panel source">
     <div class="tabs" role="tablist">
-      <button class="tab active" data-tab="browse">chiptune.app</button>
+      <button class="tab active" data-tab="games">ゲーム別</button>
+      <button class="tab" data-tab="browse">フォルダ</button>
       <button class="tab" data-tab="local">ファイル</button>
     </div>
 
-    <div class="tabpane" id="tab-browse">
+    <div class="tabpane" id="tab-games">
+      <div id="gameIndex">
+        <input id="gameFilter" type="search" placeholder="ゲーム名で絞り込み (例: pac, gradius, darius)">
+        <div id="gameLetters" class="letters"></div>
+        <div id="gameCount" class="crumbs"></div>
+      </div>
+      <div id="gameHead" class="game-head" hidden>
+        <a id="gameBack" class="back">◀ ゲーム一覧</a>
+        <div id="gameTitle" class="game-title"></div>
+        <div id="gameSys" class="sub"></div>
+        <button id="gamePlayAll">▶ 1曲目から連続再生</button>
+      </div>
+      <ul id="gameList" class="list"></ul>
+      <p class="hint">アーケード基板の VGM (chiptune.app「VGM Rips / Arcade」) をゲームごとに選べます。PCM だけで鳴らす基板の曲は再生できません。</p>
+    </div>
+
+    <div class="tabpane hidden" id="tab-browse">
       <form id="searchForm" class="row">
         <input id="searchInput" type="search" placeholder="曲名・ゲーム名で検索 (例: zelda, gradius)">
         <button type="submit">検索</button>
@@ -53,10 +70,13 @@
     </div>
     <div class="transport">
       <button id="playBtn" disabled>▶ 再生</button>
+      <button id="prevBtn" class="sq" disabled title="前の曲">⏮</button>
       <button id="stopBtn" disabled>■</button>
+      <button id="nextBtn" class="sq" disabled title="次の曲">⏭</button>
       <span id="time" class="time">0:00 / 0:00</span>
       <input id="seek" type="range" min="0" max="1000" value="0" disabled>
       <label class="chk"><input id="loopChk" type="checkbox"> ループ</label>
+      <label class="chk" title="曲が終わったら同じゲーム (フォルダ) の次の曲へ"><input id="nextChk" type="checkbox" checked> 次の曲へ</label>
     </div>
     <div class="row opts">
       <label>同時発音数
